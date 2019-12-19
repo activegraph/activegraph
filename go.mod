@@ -1,4 +1,4 @@
-module github.com/relsy/relsy
+module github.com/resly/resly
 
 go 1.12
 

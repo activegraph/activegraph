@@ -1,4 +1,4 @@
-package relsy
+package resly
 
 import (
 	"errors"
@@ -45,7 +45,7 @@ func (c *GraphQLCompiler) AddType(typedef TypeDef) error {
 	c.init()
 
 	if _, exist := c.outputs[typedef.Name]; exist {
-		return errors.New("relsy: multiple type registrations for " + typedef.Name)
+		return errors.New("resly: multiple type registrations for " + typedef.Name)
 	}
 
 	// Create a new GraphQL object from the Go type definition.
@@ -56,7 +56,7 @@ func (c *GraphQLCompiler) AddType(typedef TypeDef) error {
 
 	obj, isObject := gqltype.(*graphql.Object)
 	if !isObject {
-		return errors.New("relsy: type expected to be an object")
+		return errors.New("resly: type expected to be an object")
 	}
 
 	// Add methods for a new GraphQL type. All methods should be
@@ -80,7 +80,7 @@ func (c *GraphQLCompiler) AddType(typedef TypeDef) error {
 
 func (c *GraphQLCompiler) addFunc(funcdef FuncDef, registry graphql.Fields) error {
 	if _, exist := registry[funcdef.Name]; exist {
-		return errors.New("relsy: multiple registrations for " + funcdef.Name)
+		return errors.New("resly: multiple registrations for " + funcdef.Name)
 	}
 
 	in, err := newGraphQLArguments(funcdef.In, c.inputs)
@@ -259,6 +259,6 @@ func newGraphQLType(
 		types[obj.Name()] = obj
 		return obj, nil
 	default:
-		return gqltype, errors.New("relsy: unsupported type " + gotype.Name())
+		return gqltype, errors.New("resly: unsupported type " + gotype.Name())
 	}
 }
