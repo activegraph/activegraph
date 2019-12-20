@@ -1,4 +1,4 @@
-package relsy
+package resly
 
 import (
 	"encoding/json"

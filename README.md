@@ -1,3 +1,3 @@
-# relsy
+# resly
 
 GraphQL-powered server framework
