@@ -5,3 +5,14 @@
 section.cover {
     background: #fff !important;
 }
+
+.markdown-section code,
+.markdown-section pre,
+.markdown-section pre > code {
+    color: #eee;
+    background-color: #353544;
+}
+
+.markdown-section code {
+    color: #eccb84; 
+}
