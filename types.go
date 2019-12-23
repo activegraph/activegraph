@@ -7,6 +7,13 @@ import (
 	"strings"
 )
 
+// validator is used to optionally validate types that implement
+// this interface before executing associated method (either query
+// or mutation).
+type validator interface {
+	Validate() error
+}
+
 // TypeDef represents a Go type and list of accessors translated into
 // GraphQL schema.
 type TypeDef struct {
@@ -44,9 +51,17 @@ func (fd FuncDef) call(in []reflect.Value) (interface{}, error) {
 func (fd FuncDef) Call(ctx context.Context, args map[string]interface{}) (interface{}, error) {
 	in := []reflect.Value{reflect.ValueOf(ctx)}
 	if fd.In != nil {
-		inValue := reflect.New(fd.In)
-		if err := jsonUnpack(args, inValue.Interface()); err != nil {
+		var (
+			inValue     = reflect.New(fd.In)
+			inInterface = inValue.Interface()
+		)
+		if err := jsonUnpack(args, inInterface); err != nil {
 			return nil, err
+		}
+		if v, ok := inInterface.(validator); ok {
+			if err := v.Validate(); err != nil {
+				return nil, err
+			}
 		}
 		in = append(in, inValue.Elem())
 	}
