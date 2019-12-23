@@ -81,15 +81,15 @@ func (s *Server) AddQuery(funcdef FuncDef) {
 // Example of separation function input and output:
 //
 //	// PostInput lists arguments required to create a post.
-//  //
-//  // Such separation is required since user cannot generate identifier
+//	//
+//	// Such separation is required since user cannot generate identifier
 //	// of the post, it's the responsibility of the server.
 //	type PostInput struct {
 //		AuthorID string `json:"author_id"`
 //		Text     string `json:"text"`
 //	}
 //
-//  // Post is the model of the post.
+//	// Post is the model of the post.
 //	type Post struct {
 //		ID       string `json:"id"`
 //		AuthorID string `json:"author_id"`
