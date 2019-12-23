@@ -1,2 +1,2 @@
-- [Introduction](introduction)
-- [Tutorial](tutorial)
+- [Introduction](introduction.md)
+- [Tutorial](tutorial.md)
