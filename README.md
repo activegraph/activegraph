@@ -1,6 +1,4 @@
-# <a href='https://resly.github.io/resly'><img src='https://raw.githubusercontent.com/resly/resly/master/docs/assets/logo.svg'></a>
-
-# Resly
+# [Resly](https://resly.github.io/resly) &midot; [![Build Status][BuildStatus]](https://travis-ci.org/resly/resly)
 
 GraphQL-powered server framework for Go.
 
@@ -19,7 +17,5 @@ details on how to get started with GraphQL and Resly.
 ## License
 
 Resly is [MIT licensed](LICENSE).
-
-[![Build Status][BuildStatus]](https://travis-ci.org/resly/resly)
 
 [BuildStatus]: https://travis-ci.org/resly/resly.svg?branch=master
