@@ -16,6 +16,12 @@ const (
 	outObjectType
 )
 
+type GraphQLRequest struct {
+	Query         string                 `json:"query"`
+	Variables     map[string]interface{} `json:"variables"`
+	OperationName string                 `json:"operationName"`
+}
+
 // GraphQLCompiler is GraphQL schema compiler, it produces GraphQL
 // schema definition from the Go type and function definitions.
 type GraphQLCompiler struct {
