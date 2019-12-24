@@ -45,7 +45,7 @@ func main() {
     }
 
     // Serve GraphQL service at "localhost:8000/graphql" endpoint.
-    http.Handle("/graphql", s.MustCreateHandler())
+    http.Handle("/graphql", s)
     http.ListenAndServe(":8000", nil)
 }
 ```
