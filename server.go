@@ -11,17 +11,15 @@ import (
 	"time"
 
 	"github.com/graphql-go/graphql"
+
+	"github.com/resly/resly/httpserve"
 )
 
-// textHandler creates an HTTP handler that writes the given string
-// and status as a response.
-func textHandler(status int, text string) http.HandlerFunc {
-	return func(rw http.ResponseWriter, r *http.Request) {
-		rw.WriteHeader(status)
-		rw.Header().Add("Content-Type", "text/plain")
-		rw.Write([]byte(text))
-	}
-}
+var (
+	// ErrRequestTimeout is returned when request takes too much time
+	// to process it.
+	ErrRequestTimeout = errors.New("request processing timed out")
+)
 
 func parseURL(values url.Values) (gr GraphQLRequest, err error) {
 	query := values.Get("query")
@@ -112,6 +110,8 @@ type Server struct {
 	// RequestTimeout is the maximum duration for handling the entire
 	// request. When set to 0, request processing takes as much time
 	// as needed.
+	//
+	// Default is no timeout.
 	RequestTimeout time.Duration
 
 	Types     []TypeDef
@@ -175,7 +175,8 @@ func GraphQLHandler(schema graphql.Schema) http.HandlerFunc {
 	return func(rw http.ResponseWriter, r *http.Request) {
 		gr, err := ParseRequest(r)
 		if err != nil {
-			textHandler(http.StatusBadRequest, err.Error()).ServeHTTP(rw, r)
+			h := httpserve.TextHandler(http.StatusBadRequest, err.Error())
+			h.ServeHTTP(rw, r)
 			return
 		}
 
@@ -189,7 +190,8 @@ func GraphQLHandler(schema graphql.Schema) http.HandlerFunc {
 
 		b, err := json.Marshal(graphql.Do(params))
 		if err != nil {
-			textHandler(http.StatusInternalServerError, err.Error()).ServeHTTP(rw, r)
+			h := httpserve.TextHandler(http.StatusInternalServerError, err.Error())
+			h.ServeHTTP(rw, r)
 			return
 		}
 
@@ -211,7 +213,11 @@ func (s *Server) createHandler() http.Handler {
 		panic(err)
 	}
 
-	return GraphQLHandler(schema)
+	var handler http.Handler = GraphQLHandler(schema)
+	if s.RequestTimeout != 0 {
+		handler = http.TimeoutHandler(handler, s.RequestTimeout, ErrRequestTimeout.Error())
+	}
+	return handler
 }
 
 func (s *Server) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
