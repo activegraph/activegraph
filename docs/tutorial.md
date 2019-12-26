@@ -45,7 +45,7 @@ import "net/http"
 var s = resly.Server{ /* ... */ }
 
 func main() {
-    http.Handle("/graphql", s.MustCreateHandler())
+    http.Handle("/graphql", s)
     http.ListenAndServe(":8000", nil)
 }
 ```
