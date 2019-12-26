@@ -224,18 +224,25 @@ func newGraphQLType(
 	gqltype graphql.Type, err error,
 ) {
 	switch gotype.Kind() {
+	case reflect.Ptr:
+		gqltype, err = newGraphQLType(gotype.Elem(), ot, types)
+		switch gqltype := gqltype.(type) {
+		case *graphql.NonNull:
+			return gqltype.OfType, nil
+		}
+		return gqltype, err
 	case reflect.Float32, reflect.Float64:
-		return graphql.Float, nil
-	case reflect.Int32, reflect.Int64:
-		return graphql.Int, nil
+		return graphql.NewNonNull(graphql.Float), nil
+	case reflect.Int, reflect.Int32, reflect.Int64:
+		return graphql.NewNonNull(graphql.Int), nil
 	case reflect.String:
-		return graphql.String, nil
+		return graphql.NewNonNull(graphql.String), nil
 	case reflect.Slice, reflect.Array:
 		subtype, err := newGraphQLType(gotype.Elem(), ot, types)
 		if err != nil {
 			return gqltype, err
 		}
-		return graphql.NewList(subtype), nil
+		return graphql.NewNonNull(graphql.NewList(subtype)), nil
 	case reflect.Struct:
 		// When the passed object is a structure, look it up in the passed
 		// list of registered types and choose it in order to prevent
@@ -265,6 +272,6 @@ func newGraphQLType(
 		types[obj.Name()] = obj
 		return obj, nil
 	default:
-		return gqltype, errors.New("resly: unsupported type " + gotype.Name())
+		return gqltype, errors.New("resly: unsupported type " + gotype.String())
 	}
 }

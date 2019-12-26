@@ -11,8 +11,6 @@ import (
 	"time"
 
 	"github.com/graphql-go/graphql"
-
-	"github.com/resly/resly/httpserve"
 )
 
 var (
@@ -20,6 +18,16 @@ var (
 	// to process it.
 	ErrRequestTimeout = errors.New("request processing timed out")
 )
+
+// textHandler creates an HTTP handler that writes the given string
+// and status as a response.
+func textHandler(status int, text string) http.HandlerFunc {
+	return func(rw http.ResponseWriter, r *http.Request) {
+		rw.WriteHeader(status)
+		rw.Header().Add("Content-Type", "text/plain")
+		rw.Write([]byte(text))
+	}
+}
 
 func parseURL(values url.Values) (gr GraphQLRequest, err error) {
 	query := values.Get("query")
@@ -175,7 +183,7 @@ func GraphQLHandler(schema graphql.Schema) http.HandlerFunc {
 	return func(rw http.ResponseWriter, r *http.Request) {
 		gr, err := ParseRequest(r)
 		if err != nil {
-			h := httpserve.TextHandler(http.StatusBadRequest, err.Error())
+			h := textHandler(http.StatusBadRequest, err.Error())
 			h.ServeHTTP(rw, r)
 			return
 		}
@@ -190,7 +198,7 @@ func GraphQLHandler(schema graphql.Schema) http.HandlerFunc {
 
 		b, err := json.Marshal(graphql.Do(params))
 		if err != nil {
-			h := httpserve.TextHandler(http.StatusInternalServerError, err.Error())
+			h := textHandler(http.StatusInternalServerError, err.Error())
 			h.ServeHTTP(rw, r)
 			return
 		}
