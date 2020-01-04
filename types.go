@@ -25,6 +25,9 @@ type TypeDef struct {
 	Funcs map[string]FuncDef
 }
 
+// ClosureDef represents anonymous closure function definition.
+type ClosureDef func(funcdef FuncDef, in []reflect.Value) (out []reflect.Value)
+
 // FuncDef represents a named method of the type definition that is
 // translated to the attribute accessor of the GraphQL type.
 type FuncDef struct {
@@ -71,6 +74,16 @@ func (fd FuncDef) Call(ctx context.Context, args map[string]interface{}) (interf
 
 func (fd FuncDef) CallBound(ctx context.Context, source interface{}) (interface{}, error) {
 	return fd.call([]reflect.Value{reflect.ValueOf(ctx), reflect.ValueOf(source)})
+}
+
+// EncloseFunc overrides function of the function definition with a new
+// function "clouse". Closure accepts as the first argument original function.
+func EncloseFunc(funcdef FuncDef, closure ClosureDef) FuncDef {
+	originalFuncDef := funcdef
+	funcdef.Func = reflect.ValueOf(func(in []reflect.Value) []reflect.Value {
+		return closure(originalFuncDef, in)
+	})
+	return funcdef
 }
 
 // DefineFunc returns a new function definition that should comply

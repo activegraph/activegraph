@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/graphql-go/graphql"
+	"github.com/opentracing/opentracing-go"
 )
 
 var (
@@ -122,6 +123,10 @@ type Server struct {
 	// Default is no timeout.
 	RequestTimeout time.Duration
 
+	// Tracer enables submission of opentracing spans to the configured
+	// tracer.
+	Tracer opentracing.Tracer
+
 	Types     []TypeDef
 	Queries   []FuncDef
 	Mutations []FuncDef
@@ -130,14 +135,31 @@ type Server struct {
 	handler http.Handler
 }
 
+func (s *Server) traceFunc(funcdef FuncDef) FuncDef {
+	tracer := s.Tracer
+	if tracer == nil {
+		tracer = opentracing.NoopTracer{}
+	}
+	return EncloseFunc(funcdef, DefineTracingFunc(tracer))
+}
+
+func (s *Server) traceType(typedef TypeDef) TypeDef {
+	funcs := make(map[string]FuncDef, len(typedef.Funcs))
+	for name, funcdef := range typedef.Funcs {
+		funcs[name] = s.traceFunc(funcdef)
+	}
+	typedef.Funcs = funcs
+	return typedef
+}
+
 // AddType adds given type definitions in the list of the types.
 func (s *Server) AddType(typedef TypeDef) {
-	s.Types = append(s.Types, typedef)
+	s.Types = append(s.Types, s.traceType(typedef))
 }
 
 // AddQuery adds given function definition in the list of queries.
 func (s *Server) AddQuery(funcdef FuncDef) {
-	s.Queries = append(s.Queries, funcdef)
+	s.Queries = append(s.Queries, s.traceFunc(funcdef))
 }
 
 // AddMutation adds given function definition in the list of mutations.
@@ -146,7 +168,7 @@ func (s *Server) AddQuery(funcdef FuncDef) {
 // an output within a single mutation. Therefore a common practice is to
 // define input types as mutation input.
 func (s *Server) AddMutation(funcdef FuncDef) {
-	s.Mutations = append(s.Mutations, funcdef)
+	s.Mutations = append(s.Mutations, s.traceFunc(funcdef))
 }
 
 // compileSchema returns compiled GraphQL schema from type and function
