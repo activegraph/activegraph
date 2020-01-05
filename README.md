@@ -1,6 +1,4 @@
-# [Resly](https://resly.github.io/resly) &middot;
-[![Build Status][BuildStatus]](https://travis-ci.org/resly/resly)
-[![Documentation][Documentation]](https://godoc.org/github.com/resly/resly)
+# [Resly](https://resly.github.io/resly) &middot; [![Build Status][BuildStatus]](https://travis-ci.org/resly/resly) [![Documentation][Documentation]](https://godoc.org/github.com/resly/resly)
 
 GraphQL-powered server framework for Go.
 
