@@ -21,3 +21,4 @@ details on how to get started with GraphQL and Resly.
 Resly is [MIT licensed](LICENSE).
 
 [BuildStatus]: https://travis-ci.org/resly/resly.svg?branch=master
+[Documentation]: https://godoc.org/github.com/resly/resly?status.svg
