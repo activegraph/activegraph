@@ -247,6 +247,9 @@ func (s *Server) createHandler() http.Handler {
 	if s.RequestTimeout != 0 {
 		handler = http.TimeoutHandler(handler, s.RequestTimeout, ErrRequestTimeout.Error())
 	}
+	if s.Tracer != nil {
+		handler = TracingHandler(handler, s.Tracer)
+	}
 	return handler
 }
 
