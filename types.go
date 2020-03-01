@@ -36,6 +36,7 @@ type FuncDef struct {
 	Name string
 	// Func is an associated function used to call the given method.
 	Func reflect.Value
+	Type reflect.Type
 	// In is an input argument type of the function.
 	In reflect.Type
 	// Out is the type that function returns as the first return parameter.
@@ -76,13 +77,31 @@ func (fd FuncDef) CallBound(ctx context.Context, source interface{}) (interface{
 	return fd.call([]reflect.Value{reflect.ValueOf(ctx), reflect.ValueOf(source)})
 }
 
+var errorType = reflect.TypeOf(make([]error, 1)).Elem()
+
 // EncloseFunc overrides function of the function definition with a new
 // function "clouse". Closure accepts as the first argument original function.
-func EncloseFunc(funcdef FuncDef, closure ClosureDef) FuncDef {
-	originalFuncDef := funcdef
-	funcdef.Func = reflect.ValueOf(func(in []reflect.Value) []reflect.Value {
-		return closure(originalFuncDef, in)
-	})
+func EncloseFunc(funcdef FuncDef, closures ...ClosureDef) FuncDef {
+	for _, closure := range closures {
+		closure := closure
+		originalFuncDef := funcdef
+		funcdef.Func = reflect.MakeFunc(funcdef.Type, func(in []reflect.Value) []reflect.Value {
+			out := closure(originalFuncDef, in)
+			if len(out) == 1 {
+				return out
+			}
+
+			errValue := out[1]
+			if !out[1].IsValid() {
+				errValue = reflect.Zero(errorType)
+			}
+			out = []reflect.Value{
+				out[0],
+				errValue,
+			}
+			return out
+		})
+	}
 	return funcdef
 }
 
@@ -151,6 +170,7 @@ func DefineFunc(name string, v interface{}) (funcdef FuncDef, err error) {
 	return FuncDef{
 		Name: name,
 		Func: funcValue,
+		Type: funcType,
 		In:   in,
 		Out:  funcType.Out(0),
 	}, nil

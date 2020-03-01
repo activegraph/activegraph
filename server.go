@@ -116,6 +116,9 @@ func ParseRequest(r *http.Request) (gr GraphQLRequest, err error) {
 
 // Server is a handler used to serve GraphQL requests.
 type Server struct {
+	// Name of the server. Will be used to emit metrics about resolvers.
+	Name string
+
 	// RequestTimeout is the maximum duration for handling the entire
 	// request. When set to 0, request processing takes as much time
 	// as needed.
@@ -135,31 +138,14 @@ type Server struct {
 	handler http.Handler
 }
 
-func (s *Server) traceFunc(funcdef FuncDef) FuncDef {
-	tracer := s.Tracer
-	if tracer == nil {
-		tracer = opentracing.NoopTracer{}
-	}
-	return EncloseFunc(funcdef, DefineTracingFunc(tracer))
-}
-
-func (s *Server) traceType(typedef TypeDef) TypeDef {
-	funcs := make(map[string]FuncDef, len(typedef.Funcs))
-	for name, funcdef := range typedef.Funcs {
-		funcs[name] = s.traceFunc(funcdef)
-	}
-	typedef.Funcs = funcs
-	return typedef
-}
-
 // AddType adds given type definitions in the list of the types.
 func (s *Server) AddType(typedef TypeDef) {
-	s.Types = append(s.Types, s.traceType(typedef))
+	s.Types = append(s.Types, typedef)
 }
 
 // AddQuery adds given function definition in the list of queries.
 func (s *Server) AddQuery(funcdef FuncDef) {
-	s.Queries = append(s.Queries, s.traceFunc(funcdef))
+	s.Queries = append(s.Queries, funcdef)
 }
 
 // AddMutation adds given function definition in the list of mutations.
@@ -168,7 +154,7 @@ func (s *Server) AddQuery(funcdef FuncDef) {
 // an output within a single mutation. Therefore a common practice is to
 // define input types as mutation input.
 func (s *Server) AddMutation(funcdef FuncDef) {
-	s.Mutations = append(s.Mutations, s.traceFunc(funcdef))
+	s.Mutations = append(s.Mutations, funcdef)
 }
 
 // compileSchema returns compiled GraphQL schema from type and function
@@ -176,19 +162,40 @@ func (s *Server) AddMutation(funcdef FuncDef) {
 func (s *Server) compileSchema() (schema graphql.Schema, err error) {
 	var graphql GraphQLCompiler
 
+	tracer := s.Tracer
+	if tracer == nil {
+		tracer = opentracing.NoopTracer{}
+	}
+
+	tracingClosure := DefineTracingFunc(tracer)
+	metricsClosure := DefineMetricsFunc(s.Name)
+
+	enclose := func(funcdef FuncDef) FuncDef {
+		return EncloseFunc(funcdef, metricsClosure, tracingClosure)
+	}
+
 	// Register all defined types and functions within a GraphQL compiler.
 	for _, typedef := range s.Types {
+		var (
+			typedef = typedef
+			funcs   = make(map[string]FuncDef, len(typedef.Funcs))
+		)
+		for name, funcdef := range typedef.Funcs {
+			funcs[name] = enclose(funcdef)
+		}
+		typedef.Funcs = funcs
+
 		if err = graphql.AddType(typedef); err != nil {
 			return schema, err
 		}
 	}
 	for _, funcdef := range s.Queries {
-		if err = graphql.AddQuery(funcdef); err != nil {
+		if err = graphql.AddQuery(enclose(funcdef)); err != nil {
 			return schema, err
 		}
 	}
 	for _, funcdef := range s.Mutations {
-		if err = graphql.AddMutation(funcdef); err != nil {
+		if err = graphql.AddMutation(enclose(funcdef)); err != nil {
 			return schema, err
 		}
 	}
