@@ -43,7 +43,7 @@ func TestServer_ServeHTTPBasic(t *testing.T) {
 			r  = httptest.NewRequest(http.MethodGet, url, nil)
 		)
 
-		s.HandlerHTTP().ServeHTTP(rw, r)
+		s.HandleHTTP().ServeHTTP(rw, r)
 
 		if !assert.Equal(t, http.StatusOK, rw.Code) {
 			return false
