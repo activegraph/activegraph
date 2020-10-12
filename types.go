@@ -2,9 +2,10 @@ package resly
 
 import (
 	"context"
-	"fmt"
 	"reflect"
 	"strings"
+
+	"github.com/pkg/errors"
 )
 
 // validator is used to optionally validate types that implement
@@ -19,8 +20,10 @@ type validator interface {
 type TypeDef struct {
 	// Name is a unique object name.
 	Name string
+
 	// Type is a corresponding Go type for a GraphQL type.
 	Type reflect.Type
+
 	// Funcs is a list of methods for this type.
 	Funcs map[string]FuncDef
 }
@@ -34,11 +37,14 @@ type FuncDef struct {
 	// Name is a name of the method, it should be unique within a
 	// single type definition.
 	Name string
+
 	// Func is an associated function used to call the given method.
 	Func reflect.Value
 	Type reflect.Type
+
 	// In is an input argument type of the function.
 	In reflect.Type
+
 	// Out is the type that function returns as the first return parameter.
 	Out reflect.Type
 }
@@ -112,7 +118,7 @@ func EncloseFunc(funcdef FuncDef, closures ...ClosureDef) FuncDef {
 //		// ...
 //	}
 //
-//	func Variant2(ctx context.Context, arg1 Type) (interface{}, error) {
+//	func Variant2(ctx context.Context, input TypeInput) (interface{}, error) {
 //		// ...
 //	}
 //
@@ -127,7 +133,7 @@ func DefineFunc(name string, v interface{}) (funcdef FuncDef, err error) {
 	// Ensure that the method is compatible with method definition that
 	// we support, otherwise panic.
 	if funcType.Kind() != reflect.Func {
-		return funcdef, fmt.Errorf("func %q must be a func, is %T", name, v)
+		return funcdef, errors.Errorf("func %q must be a func, is %T", name, v)
 	}
 
 	var (
@@ -146,25 +152,38 @@ func DefineFunc(name string, v interface{}) (funcdef FuncDef, err error) {
 	//
 	// The second argument can be omitted. When specified, it should be
 	// a structure.
-	if numIn == 0 || numIn > 2 {
-		return funcdef, fmt.Errorf("func %q must take at least 1 and at most 2 args", name)
+	if numIn < 1 {
+		return funcdef, errors.Errorf(
+			"Function %q must take at least 1 argument `context.Context`, takes %d.",
+			name, numOut,
+		)
 	}
 	if !funcType.In(0).Implements(contextInterface) {
-		return funcdef, fmt.Errorf("first arg of %q must implement context.Context", name)
+		return funcdef, errors.Errorf(
+			"The first argument of the function %q must implement "+
+				"`context.Context` interface", name,
+		)
 	}
 	if numIn == 2 {
 		if in = funcType.In(1); in.Kind() != reflect.Struct {
-			return funcdef, fmt.Errorf("second arg of %q must be a struct", name)
+			return funcdef, errors.Errorf(
+				"The second argument of the function %q must be a struct", name)
 		}
 	}
 
 	// Ensure that the second returned argument is an error, which will
 	// be propagated to the client through GraphQL interface.
 	if numOut != 2 {
-		return funcdef, fmt.Errorf("func %q must return exactly 2 args, returns %d", name, numOut)
+		return funcdef, errors.Errorf(
+			"Function %q must return exatly 2 argument, returns %d. "+
+				"Both 'Mutation' and 'Query' require return parameter, "+
+				"when this behavior must be preserved, consider using "+
+				"`scalar Void` as return type.",
+			name, numOut,
+		)
 	}
 	if !funcType.Out(numOut - 1).Implements(errorInterface) {
-		return funcdef, fmt.Errorf("second return arg of %q must implement error", name)
+		return funcdef, errors.Errorf("Second return arg of %q must implement error", name)
 	}
 
 	return FuncDef{
@@ -220,7 +239,7 @@ func DefineType(v interface{}, funcs Funcs) (typedef TypeDef, err error) {
 	gotype := reflect.TypeOf(v)
 
 	if gotype.Kind() != reflect.Struct {
-		return typedef, fmt.Errorf("type must be a struct, is %T", v)
+		return typedef, errors.Errorf("type must be a struct, is %T", v)
 	}
 
 	funcdefs := make(map[string]FuncDef)
@@ -233,10 +252,10 @@ func DefineType(v interface{}, funcs Funcs) (typedef TypeDef, err error) {
 		// Ensure that input argument of the method is the same as the
 		// parent type.
 		if funcdefs[name].In == nil {
-			return typedef, fmt.Errorf("func %q is missing parent argument", name)
+			return typedef, errors.Errorf("func %q is missing parent argument", name)
 		}
 		if funcdefs[name].In != gotype {
-			return typedef, fmt.Errorf("parent type of %q does not match", name)
+			return typedef, errors.Errorf("parent type of %q does not match", name)
 		}
 	}
 

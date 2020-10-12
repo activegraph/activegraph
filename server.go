@@ -7,7 +7,7 @@ import (
 	"mime"
 	"net/http"
 	"net/url"
-	"sync"
+	"strings"
 	"time"
 
 	"github.com/graphql-go/graphql"
@@ -30,7 +30,7 @@ func textHandler(status int, text string) http.HandlerFunc {
 	}
 }
 
-func parseURL(values url.Values) (gr GraphQLRequest, err error) {
+func parseURL(values url.Values) (gr Request, err error) {
 	query := values.Get("query")
 	if query == "" {
 		return gr, errors.New("request is missing mandatory 'query' URL parameter")
@@ -47,30 +47,30 @@ func parseURL(values url.Values) (gr GraphQLRequest, err error) {
 		}
 	}
 
-	return GraphQLRequest{
+	return Request{
 		Query:         query,
 		Variables:     vars,
 		OperationName: values.Get("operationName"),
 	}, nil
 }
 
-func parseForm(r *http.Request) (gr GraphQLRequest, err error) {
+func parseForm(r *http.Request) (gr Request, err error) {
 	if err := r.ParseForm(); err != nil {
 		return gr, err
 	}
 	return parseURL(r.PostForm)
 }
 
-func parseGraphQL(r *http.Request) (gr GraphQLRequest, err error) {
+func parseGraphQL(r *http.Request) (gr Request, err error) {
 	body, err := ioutil.ReadAll(r.Body)
 	if err != nil {
 		return gr, err
 	}
-	return GraphQLRequest{Query: string(body)}, nil
+	return Request{Query: string(body)}, nil
 }
 
 // parseBody parses GraphQL request from the request JSON body.
-func parseBody(r *http.Request) (gr GraphQLRequest, err error) {
+func parseBody(r *http.Request) (gr Request, err error) {
 	body, err := ioutil.ReadAll(r.Body)
 	if err != nil {
 		return gr, err
@@ -79,13 +79,19 @@ func parseBody(r *http.Request) (gr GraphQLRequest, err error) {
 	return gr, err
 }
 
+type Request struct {
+	Query         string                 `json:"query"`
+	Variables     map[string]interface{} `json:"variables"`
+	OperationName string                 `json:"operationName"`
+}
+
 // ParseRequest parses HTTP request and returns GraphQL request instance
 // that contains all required parameters.
 //
 // This function supports requests provided as part of URL parameters,
 // within body as pure GraphQL request, within body as JSON request, and
 // as part of form request.
-func ParseRequest(r *http.Request) (gr GraphQLRequest, err error) {
+func ParseRequest(r *http.Request) (gr Request, err error) {
 	// Parse URL only when request is submitted with "GET" verb.
 	if r.Method == http.MethodGet {
 		return parseURL(r.URL.Query())
@@ -126,41 +132,42 @@ type Server struct {
 	// Default is no timeout.
 	RequestTimeout time.Duration
 
-	// Tracer enables submission of opentracing spans to the configured
-	// tracer.
+	// Tracer specifies an optional tracing implementation that is called
+	// when resolver of Type, Query, or Mutation is called during the
+	// processing of incoming request.
 	Tracer opentracing.Tracer
 
 	Types     []TypeDef
 	Queries   []FuncDef
 	Mutations []FuncDef
-
-	once    sync.Once
-	handler http.Handler
 }
 
-// AddType adds given type definitions in the list of the types.
-func (s *Server) AddType(typedef TypeDef) {
-	s.Types = append(s.Types, typedef)
+// HandleType adds given type definitions in the list of the types.
+func (s *Server) AddType(typedef ...TypeDef) *Server {
+	s.Types = append(s.Types, typedef...)
+	return s
 }
 
-// AddQuery adds given function definition in the list of queries.
-func (s *Server) AddQuery(funcdef FuncDef) {
-	s.Queries = append(s.Queries, funcdef)
+// HandleQuery adds given function definition in the list of queries.
+func (s *Server) AddQuery(name string, fn interface{}) *Server {
+	s.Queries = append(s.Queries, NewFunc(name, fn))
+	return s
 }
 
-// AddMutation adds given function definition in the list of mutations.
+// HandleMutation adds given function definition in the list of mutations.
 //
 // Note, that GraphQL does not allow to use the same type as input and as
 // an output within a single mutation. Therefore a common practice is to
 // define input types as mutation input.
-func (s *Server) AddMutation(funcdef FuncDef) {
-	s.Mutations = append(s.Mutations, funcdef)
+func (s *Server) HandleMutation(name string, fn interface{}) *Server {
+	s.Mutations = append(s.Mutations, NewFunc(name, fn))
+	return s
 }
 
-// compileSchema returns compiled GraphQL schema from type and function
+// CreateSchema returns compiled GraphQL schema from type and function
 // definitions.
-func (s *Server) compileSchema() (schema graphql.Schema, err error) {
-	var graphql GraphQLCompiler
+func (s *Server) CreateSchema() (schema graphql.Schema, err error) {
+	var graphql GraphQL
 
 	tracer := s.Tracer
 	if tracer == nil {
@@ -199,7 +206,7 @@ func (s *Server) compileSchema() (schema graphql.Schema, err error) {
 			return schema, err
 		}
 	}
-	return graphql.Compile()
+	return graphql.CreateSchema()
 }
 
 // GraphQLHandler returns a new HTTP handler that attempts to parse GraphQL
@@ -210,6 +217,12 @@ func (s *Server) compileSchema() (schema graphql.Schema, err error) {
 // as a response.
 func GraphQLHandler(schema graphql.Schema) http.HandlerFunc {
 	return func(rw http.ResponseWriter, r *http.Request) {
+		acceptHeader := r.Header.Get("Accept")
+		if _, ok := r.URL.Query()["raw"]; !ok && strings.Contains(acceptHeader, "text/html") {
+			handlePlayground(rw, r)
+			return
+		}
+
 		gr, err := ParseRequest(r)
 		if err != nil {
 			h := textHandler(http.StatusBadRequest, err.Error())
@@ -237,15 +250,15 @@ func GraphQLHandler(schema graphql.Schema) http.HandlerFunc {
 	}
 }
 
-// createHandler creates a new HTTP handler used to process GraphQL requests.
+// HandleHTTP creates a new HTTP handler used to process GraphQL requests.
 //
 // This function registers all type and function definitions in the GraphQL
 // schema. Produced schema will be used to resolve requests.
 //
 // On duplicate types, queries or mutations, function panics.
-func (s *Server) createHandler() http.Handler {
+func (s *Server) HandleHTTP() http.Handler {
 	// There is no reason to create a server that always returns errors.
-	schema, err := s.compileSchema()
+	schema, err := s.CreateSchema()
 	if err != nil {
 		panic(err)
 	}
@@ -258,9 +271,4 @@ func (s *Server) createHandler() http.Handler {
 		handler = TracingHandler(handler, s.Tracer)
 	}
 	return handler
-}
-
-func (s *Server) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
-	s.once.Do(func() { s.handler = s.createHandler() })
-	s.handler.ServeHTTP(rw, r)
 }
