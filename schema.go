@@ -16,22 +16,16 @@ const (
 	outObjectType
 )
 
-type GraphQLRequest struct {
-	Query         string                 `json:"query"`
-	Variables     map[string]interface{} `json:"variables"`
-	OperationName string                 `json:"operationName"`
-}
-
-// GraphQLCompiler is GraphQL schema compiler, it produces GraphQL
+// GraphQL is GraphQL schema compiler, it produces GraphQL
 // schema definition from the Go type and function definitions.
-type GraphQLCompiler struct {
+type GraphQL struct {
 	inputs    map[string]graphql.Type
 	outputs   map[string]graphql.Type
 	queries   graphql.Fields
 	mutations graphql.Fields
 }
 
-func (c *GraphQLCompiler) init() {
+func (c *GraphQL) init() {
 	if c.inputs == nil {
 		c.inputs = make(map[string]graphql.Type)
 	}
@@ -47,7 +41,7 @@ func (c *GraphQLCompiler) init() {
 }
 
 // AddType registers the given type in the GraphQL schema.
-func (c *GraphQLCompiler) AddType(typedef TypeDef) error {
+func (c *GraphQL) AddType(typedef TypeDef) error {
 	c.init()
 
 	if _, exist := c.outputs[typedef.Name]; exist {
@@ -55,12 +49,12 @@ func (c *GraphQLCompiler) AddType(typedef TypeDef) error {
 	}
 
 	// Create a new GraphQL object from the Go type definition.
-	gqltype, err := newGraphQLType(typedef.Type, outObjectType, c.outputs)
+	gqltype, err := newType(typedef.Type, outObjectType, c.outputs)
 	if err != nil {
 		return err
 	}
 
-	obj, isObject := gqltype.(*graphql.Object)
+	obj, isObject := graphql.GetNullable(gqltype).(*graphql.Object)
 	if !isObject {
 		return errors.New("resly: type expected to be an object")
 	}
@@ -68,7 +62,7 @@ func (c *GraphQLCompiler) AddType(typedef TypeDef) error {
 	// Add methods for a new GraphQL type. All methods should be
 	// bounded to this GraphQL type.
 	for name, funcdef := range typedef.Funcs {
-		out, err := newGraphQLType(funcdef.Out, outObjectType, c.outputs)
+		out, err := newType(funcdef.Out, outObjectType, c.outputs)
 		if err != nil {
 			return err
 		}
@@ -76,7 +70,7 @@ func (c *GraphQLCompiler) AddType(typedef TypeDef) error {
 		obj.AddFieldConfig(name, &graphql.Field{
 			Name:    name,
 			Type:    out,
-			Resolve: newGraphQLBoundFunc(funcdef),
+			Resolve: newBoundFunc(funcdef),
 		})
 	}
 
@@ -84,16 +78,17 @@ func (c *GraphQLCompiler) AddType(typedef TypeDef) error {
 	return nil
 }
 
-func (c *GraphQLCompiler) addFunc(funcdef FuncDef, registry graphql.Fields) error {
+func (c *GraphQL) addFunc(funcdef FuncDef, registry graphql.Fields) error {
 	if _, exist := registry[funcdef.Name]; exist {
 		return errors.New("resly: multiple registrations for " + funcdef.Name)
 	}
 
-	in, err := newGraphQLArguments(funcdef.In, c.inputs)
+	in, err := newArguments(funcdef.In, c.inputs)
 	if err != nil {
 		return err
 	}
-	out, err := newGraphQLType(funcdef.Out, outObjectType, c.outputs)
+
+	out, err := newType(funcdef.Out, outObjectType, c.outputs)
 	if err != nil {
 		return err
 	}
@@ -101,37 +96,32 @@ func (c *GraphQLCompiler) addFunc(funcdef FuncDef, registry graphql.Fields) erro
 	registry[funcdef.Name] = &graphql.Field{
 		Args:    in,
 		Type:    out,
-		Resolve: newGraphQLUnboundFunc(funcdef),
+		Resolve: newUnboundFunc(funcdef),
 	}
 	return nil
 }
 
-func (c *GraphQLCompiler) AddQuery(funcdef FuncDef) error {
+func (c *GraphQL) AddQuery(funcdef FuncDef) error {
 	c.init()
 	return c.addFunc(funcdef, c.queries)
 }
 
-func (c *GraphQLCompiler) AddMutation(funcdef FuncDef) (err error) {
+func (c *GraphQL) AddMutation(funcdef FuncDef) (err error) {
 	c.init()
 	return c.addFunc(funcdef, c.mutations)
 }
 
 // Compile creates GraphQL schema based on registered types, queries and
 // mutations.
-func (c *GraphQLCompiler) Compile() (graphql.Schema, error) {
+func (c *GraphQL) CreateSchema() (graphql.Schema, error) {
 	c.init()
 
-	var (
-		query    *graphql.Object
-		mutation *graphql.Object
-	)
+	query := graphql.NewObject(graphql.ObjectConfig{
+		Name: "Query", Fields: c.queries,
+	})
 
-	if len(c.queries) != 0 {
-		query = graphql.NewObject(graphql.ObjectConfig{
-			Name: "Query", Fields: c.queries,
-		})
-	}
-	if len(c.mutations) != 0 {
+	var mutation *graphql.Object
+	if len(c.mutations) > 0 {
 		mutation = graphql.NewObject(graphql.ObjectConfig{
 			Name: "Mutation", Fields: c.mutations,
 		})
@@ -143,53 +133,42 @@ func (c *GraphQLCompiler) Compile() (graphql.Schema, error) {
 	})
 }
 
-// newGraphQLBoundFunc creates a field resolve function that can be
+// newBoundFunc creates a field resolve function that can be
 // used as a method of the type.
-func newGraphQLBoundFunc(funcdef FuncDef) graphql.FieldResolveFn {
+func newBoundFunc(funcdef FuncDef) graphql.FieldResolveFn {
 	return func(p graphql.ResolveParams) (interface{}, error) {
 		return funcdef.CallBound(p.Context, p.Source)
 	}
 }
 
-// newGraphQLUnboundFunc creates a field resolve function that can be
+// newUnboundFunc creates a field resolve function that can be
 // used as GraphQL query.
-func newGraphQLUnboundFunc(funcdef FuncDef) graphql.FieldResolveFn {
+func newUnboundFunc(funcdef FuncDef) graphql.FieldResolveFn {
 	return func(p graphql.ResolveParams) (interface{}, error) {
 		return funcdef.Call(p.Context, p.Args)
 	}
 }
 
-func newGraphQLArguments(
-	gotype reflect.Type, types map[string]graphql.Type,
-) (
+func newArguments(gotype reflect.Type, types map[string]graphql.Type) (
 	graphql.FieldConfigArgument, error,
 ) {
 	if gotype == nil {
 		return nil, nil
 	}
-	gqltype, err := newGraphQLType(gotype, inObjectType, types)
+	gqltype, err := newType(gotype, inObjectType, types)
 	if err != nil {
 		return nil, err
 	}
-	obj, ok := gqltype.(*graphql.InputObject)
-	if !ok {
-		return nil, errors.New("argument type is expected to be an object")
-	}
 
-	var (
-		fields = obj.Fields()
-		args   = make(graphql.FieldConfigArgument, len(fields))
-	)
-	for name, field := range fields {
-		args[name] = &graphql.ArgumentConfig{Type: field.Type}
-	}
-	return args, nil
+	return graphql.FieldConfigArgument{
+		"input": &graphql.ArgumentConfig{Type: gqltype},
+	}, nil
 }
 
-// newGraphQLObject returns a new GraphQL object with the given name and
+// newObject returns a new GraphQL object with the given name and
 // the set of fields. Object type specifies the type: either input or
 // output object.
-func newGraphQLObject(
+func newObject(
 	ot objectType, name string, fields map[string]graphql.Type,
 ) graphql.Type {
 	switch ot {
@@ -216,21 +195,20 @@ func newGraphQLObject(
 	}
 }
 
-// newGraphQLType creates a new GraphQL type from the Go type, it recursively
+// newType creates a new GraphQL type from the Go type, it recursively
 // traverses complex types, like slices, arrays and structures.
-func newGraphQLType(
+func newType(
 	gotype reflect.Type, ot objectType, types map[string]graphql.Type,
 ) (
 	gqltype graphql.Type, err error,
 ) {
 	switch gotype.Kind() {
 	case reflect.Ptr:
-		gqltype, err = newGraphQLType(gotype.Elem(), ot, types)
-		switch gqltype := gqltype.(type) {
-		case *graphql.NonNull:
-			return gqltype.OfType, nil
+		gqltype, err = newType(gotype.Elem(), ot, types)
+		if err != nil {
+			return nil, err
 		}
-		return gqltype, err
+		return graphql.GetNullable(gqltype).(graphql.Type), nil
 	case reflect.Float32, reflect.Float64:
 		return graphql.NewNonNull(graphql.Float), nil
 	case reflect.Int, reflect.Int32, reflect.Int64:
@@ -238,7 +216,7 @@ func newGraphQLType(
 	case reflect.String:
 		return graphql.NewNonNull(graphql.String), nil
 	case reflect.Slice, reflect.Array:
-		subtype, err := newGraphQLType(gotype.Elem(), ot, types)
+		subtype, err := newType(gotype.Elem(), ot, types)
 		if err != nil {
 			return gqltype, err
 		}
@@ -260,7 +238,7 @@ func newGraphQLType(
 			if skip {
 				continue
 			}
-			subtype, err := newGraphQLType(field.Type, ot, types)
+			subtype, err := newType(field.Type, ot, types)
 			if err != nil {
 				return gqltype, err
 			}
@@ -268,9 +246,10 @@ func newGraphQLType(
 		}
 
 		// Ensure that registry of types is updated with a new type.
-		obj := newGraphQLObject(ot, gotype.Name(), fields)
-		types[obj.Name()] = obj
-		return obj, nil
+		obj := newObject(ot, gotype.Name(), fields)
+		types[obj.Name()] = graphql.NewNonNull(obj)
+
+		return types[obj.Name()], nil
 	default:
 		return gqltype, errors.New("resly: unsupported type " + gotype.String())
 	}

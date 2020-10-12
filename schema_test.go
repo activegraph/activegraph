@@ -27,7 +27,7 @@ func TestNewGraphQLType_InputOK(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run("", func(t *testing.T) {
-			received, err := newGraphQLType(tt.gotype, inObjectType, nil)
+			received, err := newType(tt.gotype, inObjectType, nil)
 			assert.NoError(t, err)
 			assert.Equal(t, tt.want, received)
 		})
