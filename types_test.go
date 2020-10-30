@@ -39,7 +39,7 @@ func TestFuncCall_ValidateOK(t *testing.T) {
 
 	call := func(arg1 string) bool {
 		_, err := fd.Call(context.TODO(), map[string]interface{}{
-			"arg1": arg1,
+			"input": map[string]interface{}{"arg1": arg1},
 		})
 		return err == nil
 	}
