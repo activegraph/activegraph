@@ -65,7 +65,11 @@ func (fd FuncDef) Call(ctx context.Context, args map[string]interface{}) (interf
 			inValue     = reflect.New(fd.In)
 			inInterface = inValue.Interface()
 		)
-		if err := jsonUnpack(args, inInterface); err != nil {
+		input, ok := args["input"]
+		if !ok {
+			return nil, errors.New("missing required 'input' parameter")
+		}
+		if err := jsonUnpack(input, inInterface); err != nil {
 			return nil, err
 		}
 		if v, ok := inInterface.(validator); ok {

@@ -22,7 +22,7 @@ func jsonName(sf reflect.StructField) (name string, ignore bool) {
 	return values[0], false
 }
 
-func jsonUnpack(m map[string]interface{}, dest interface{}) error {
+func jsonUnpack(m interface{}, dest interface{}) error {
 	b, err := json.Marshal(m)
 	if err != nil {
 		return err
