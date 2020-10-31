@@ -1,4 +1,4 @@
-# [Resly](https://resly.github.io) &middot; [![Build Status][BuildStatus]](https://travis-ci.org/resly/resly) [![Documentation][Documentation]](https://godoc.org/github.com/resly/resly)
+# [Resly](https://resly.github.io) &middot; [![Tests][Tests]](https://github.com/resly/resly) [![Documentation][Documentation]](https://godoc.org/github.com/resly/resly)
 
 GraphQL-powered server framework for Go.
 
@@ -49,5 +49,5 @@ func main() {
 
 Resly is [MIT licensed](LICENSE).
 
-[BuildStatus]: https://travis-ci.org/resly/resly.svg?branch=master
+[Tests]: https://github.com/resly/resly/workflows/Tests/badge.svg
 [Documentation]: https://godoc.org/github.com/resly/resly?status.svg
