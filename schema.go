@@ -1,10 +1,10 @@
 package resly
 
 import (
-	"errors"
 	"reflect"
 
 	"github.com/graphql-go/graphql"
+	"github.com/pkg/errors"
 )
 
 // objectType defines the "direction" of the object, it's either input
@@ -195,17 +195,15 @@ func newQueryArgs(gotype reflect.Type, types map[string]graphql.Type) (
 	if gotype == nil {
 		return nil, nil
 	}
-	gqltype, err := newType(gotype, inObjectType, types)
+
+	gqltype, err := newObject("@", gotype, inObjectType, types)
 	if err != nil {
 		return nil, err
 	}
 
-	obj, ok := gqltype.(*graphql.InputObject)
-	if !ok {
-		return nil, errors.New("argument type is expected to be an object")
-	}
-
 	var (
+		obj = gqltype.(*graphql.InputObject)
+
 		fields = obj.Fields()
 		args   = make(graphql.FieldConfigArgument, len(fields))
 	)
@@ -225,29 +223,45 @@ func newQueryFunc(funcdef FuncDef) graphql.FieldResolveFn {
 // the set of fields. Object type specifies the type: either input or
 // output object.
 func newObject(
-	ot objectType, name string, fields map[string]graphql.Type,
-) graphql.Type {
+	name string, gotype reflect.Type, ot objectType, types map[string]graphql.Type,
+) (graphql.Type, error) {
+	fields := make(map[string]graphql.Type)
+	for i := 0; i < gotype.NumField(); i++ {
+		field := gotype.Field(i)
+		fieldName, skip := jsonName(field)
+
+		// Skip the field, when it is ignored from the JSON representation.
+		if skip {
+			continue
+		}
+		subtype, err := newType(field.Type, ot, types)
+		if err != nil {
+			return nil, err
+		}
+		fields[fieldName] = subtype
+	}
+
 	switch ot {
 	case inObjectType:
 		objFields := make(graphql.InputObjectConfigFieldMap)
-		for name, t := range fields {
-			objFields[name] = &graphql.InputObjectFieldConfig{Type: t}
+		for fname, t := range fields {
+			objFields[fname] = &graphql.InputObjectFieldConfig{Type: t}
 		}
 		return graphql.NewInputObject(graphql.InputObjectConfig{
 			Name:   name,
 			Fields: objFields,
-		})
+		}), nil
 	case outObjectType:
 		objFields := make(graphql.Fields)
-		for name, t := range fields {
-			objFields[name] = &graphql.Field{Name: name, Type: t}
+		for fname, t := range fields {
+			objFields[fname] = &graphql.Field{Name: fname, Type: t}
 		}
 		return graphql.NewObject(graphql.ObjectConfig{
 			Name:   name,
 			Fields: objFields,
-		})
+		}), nil
 	default:
-		return nil
+		return nil, errors.New("unknown object type")
 	}
 }
 
@@ -285,26 +299,13 @@ func newType(
 			return gqltype, nil
 		}
 
-		fields := make(map[string]graphql.Type)
-		for i := 0; i < gotype.NumField(); i++ {
-			field := gotype.Field(i)
-			fieldName, skip := jsonName(field)
-
-			// Skip the field, when it is ignored from the JSON representation.
-			if skip {
-				continue
-			}
-			subtype, err := newType(field.Type, ot, types)
-			if err != nil {
-				return gqltype, err
-			}
-			fields[fieldName] = subtype
+		// Ensure that registry of types is updated with a new type.
+		obj, err := newObject(gotype.Name(), gotype, ot, types)
+		if err != nil {
+			return nil, err
 		}
 
-		// Ensure that registry of types is updated with a new type.
-		obj := newObject(ot, gotype.Name(), fields)
 		types[obj.Name()] = graphql.NewNonNull(obj)
-
 		return types[obj.Name()], nil
 	default:
 		return gqltype, errors.New("resly: unsupported type " + gotype.String())
