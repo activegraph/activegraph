@@ -189,6 +189,9 @@ func newMutationFunc(funcdef FuncDef) graphql.FieldResolveFn {
 }
 
 // newQueryArgs creates configuration of the arguments for the query function.
+//
+// All fields of the specified gotype will be represented in a camel case for the
+// sake of uniformity with GraphQL style notation.
 func newQueryArgs(gotype reflect.Type, types map[string]graphql.Type) (
 	graphql.FieldConfigArgument, error,
 ) {
@@ -196,6 +199,12 @@ func newQueryArgs(gotype reflect.Type, types map[string]graphql.Type) (
 		return nil, nil
 	}
 
+	// Specify a fake object name to comply with graphql requirements on input
+	// object naming. In fact, there is no need to create an InputObject type,
+	// as the fields will be passed to tha FieldConfig detached from object.
+	//
+	// This process is required to populate the "types" mapping, in order to
+	// register all nested types.
 	gqltype, err := newObject("@", gotype, inObjectType, types)
 	if err != nil {
 		return nil, err
