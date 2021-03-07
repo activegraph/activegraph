@@ -6,6 +6,7 @@ import (
 
 	"github.com/graphql-go/graphql"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestNewGraphQLType_InputOK(t *testing.T) {
@@ -30,6 +31,35 @@ func TestNewGraphQLType_InputOK(t *testing.T) {
 			received, err := newType(tt.gotype, inObjectType, nil)
 			assert.NoError(t, err)
 			assert.Equal(t, tt.want, received)
+		})
+	}
+}
+
+func TestNewQueryArgs_OK(t *testing.T) {
+	type QueryArgs map[string]graphql.Type
+
+	tests := []struct {
+		gotype interface{}
+		want   QueryArgs
+	}{
+		{struct{ Name string }{}, QueryArgs{"Name": graphql.NewNonNull(graphql.String)}},
+		{struct {
+			Key   int
+			Value *uint64
+		}{}, QueryArgs{"Key": graphql.NewNonNull(graphql.Int), "Value": graphql.Int}},
+	}
+
+	for _, tt := range tests {
+		t.Run("", func(t *testing.T) {
+			conf, err := newQueryArgs(reflect.TypeOf(tt.gotype), make(map[string]graphql.Type))
+			require.NoError(t, err)
+
+			args := make(QueryArgs, len(conf))
+			for name, arg := range conf {
+				args[name] = arg.Type
+			}
+
+			assert.Equal(t, tt.want, args)
 		})
 	}
 }
