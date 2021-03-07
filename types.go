@@ -46,6 +46,7 @@ type FuncDef struct {
 	In reflect.Type
 
 	// Out is the type that function returns as the first return parameter.
+	// The second return parameter must be an error type.
 	Out reflect.Type
 }
 
@@ -58,17 +59,13 @@ func (fd FuncDef) call(in []reflect.Value) (interface{}, error) {
 	return res, nil
 }
 
-func (fd FuncDef) Call(ctx context.Context, args map[string]interface{}) (interface{}, error) {
+func (fd FuncDef) Call(ctx context.Context, input interface{}) (interface{}, error) {
 	in := []reflect.Value{reflect.ValueOf(ctx)}
 	if fd.In != nil {
 		var (
 			inValue     = reflect.New(fd.In)
 			inInterface = inValue.Interface()
 		)
-		input, ok := args["input"]
-		if !ok {
-			return nil, errors.New("missing required 'input' parameter")
-		}
 		if err := jsonUnpack(input, inInterface); err != nil {
 			return nil, err
 		}

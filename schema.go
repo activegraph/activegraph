@@ -78,12 +78,13 @@ func (c *GraphQL) AddType(typedef TypeDef) error {
 	return nil
 }
 
-func (c *GraphQL) addFunc(funcdef FuncDef, registry graphql.Fields) error {
-	if _, exist := registry[funcdef.Name]; exist {
+func (c *GraphQL) AddQuery(funcdef FuncDef) error {
+	c.init()
+	if _, dup := c.queries[funcdef.Name]; dup {
 		return errors.New("resly: multiple registrations for " + funcdef.Name)
 	}
 
-	in, err := newArguments(funcdef.In, c.inputs)
+	in, err := newQueryArgs(funcdef.In, c.inputs)
 	if err != nil {
 		return err
 	}
@@ -93,22 +94,36 @@ func (c *GraphQL) addFunc(funcdef FuncDef, registry graphql.Fields) error {
 		return err
 	}
 
-	registry[funcdef.Name] = &graphql.Field{
+	c.queries[funcdef.Name] = &graphql.Field{
 		Args:    in,
 		Type:    out,
-		Resolve: newUnboundFunc(funcdef),
+		Resolve: newQueryFunc(funcdef),
 	}
 	return nil
 }
 
-func (c *GraphQL) AddQuery(funcdef FuncDef) error {
-	c.init()
-	return c.addFunc(funcdef, c.queries)
-}
-
 func (c *GraphQL) AddMutation(funcdef FuncDef) (err error) {
 	c.init()
-	return c.addFunc(funcdef, c.mutations)
+	if _, dup := c.mutations[funcdef.Name]; dup {
+		return errors.New("resly: multiple registrations for " + funcdef.Name)
+	}
+
+	in, err := newMutationArgs(funcdef.In, c.inputs)
+	if err != nil {
+		return err
+	}
+
+	out, err := newType(funcdef.Out, outObjectType, c.outputs)
+	if err != nil {
+		return err
+	}
+
+	c.mutations[funcdef.Name] = &graphql.Field{
+		Args:    in,
+		Type:    out,
+		Resolve: newMutationFunc(funcdef),
+	}
+	return nil
 }
 
 // Compile creates GraphQL schema based on registered types, queries and
@@ -141,15 +156,11 @@ func newBoundFunc(funcdef FuncDef) graphql.FieldResolveFn {
 	}
 }
 
-// newUnboundFunc creates a field resolve function that can be
-// used as GraphQL query.
-func newUnboundFunc(funcdef FuncDef) graphql.FieldResolveFn {
-	return func(p graphql.ResolveParams) (interface{}, error) {
-		return funcdef.Call(p.Context, p.Args)
-	}
-}
-
-func newArguments(gotype reflect.Type, types map[string]graphql.Type) (
+// newMutationArgs creates configuration of the arguments for the mutation function.
+//
+// The specificity: all mutations must accept a single argument called "input", which
+// type also must be an InputObject type.
+func newMutationArgs(gotype reflect.Type, types map[string]graphql.Type) (
 	graphql.FieldConfigArgument, error,
 ) {
 	if gotype == nil {
@@ -163,6 +174,51 @@ func newArguments(gotype reflect.Type, types map[string]graphql.Type) (
 	return graphql.FieldConfigArgument{
 		"input": &graphql.ArgumentConfig{Type: gqltype},
 	}, nil
+}
+
+// newMutationFunc creates a field resolve function that can be used as GraphQL mutation.
+func newMutationFunc(funcdef FuncDef) graphql.FieldResolveFn {
+	return func(p graphql.ResolveParams) (interface{}, error) {
+		// See the newMutationArgs for reference of the input parameters.
+		input, ok := p.Args["input"]
+		if !ok {
+			return nil, errors.New("missing 'input' argument in the mutation " + funcdef.Name)
+		}
+		return funcdef.Call(p.Context, input)
+	}
+}
+
+// newQueryArgs creates configuration of the arguments for the query function.
+func newQueryArgs(gotype reflect.Type, types map[string]graphql.Type) (
+	graphql.FieldConfigArgument, error,
+) {
+	if gotype == nil {
+		return nil, nil
+	}
+	gqltype, err := newType(gotype, inObjectType, types)
+	if err != nil {
+		return nil, err
+	}
+
+	obj, ok := gqltype.(*graphql.InputObject)
+	if !ok {
+		return nil, errors.New("argument type is expected to be an object")
+	}
+
+	var (
+		fields = obj.Fields()
+		args   = make(graphql.FieldConfigArgument, len(fields))
+	)
+	for name, field := range fields {
+		args[name] = &graphql.ArgumentConfig{Type: field.Type}
+	}
+	return args, nil
+}
+
+func newQueryFunc(funcdef FuncDef) graphql.FieldResolveFn {
+	return func(p graphql.ResolveParams) (interface{}, error) {
+		return funcdef.Call(p.Context, p.Args)
+	}
 }
 
 // newObject returns a new GraphQL object with the given name and
@@ -211,7 +267,7 @@ func newType(
 		return graphql.GetNullable(gqltype).(graphql.Type), nil
 	case reflect.Float32, reflect.Float64:
 		return graphql.NewNonNull(graphql.Float), nil
-	case reflect.Int, reflect.Int32, reflect.Int64:
+	case reflect.Uint, reflect.Uint32, reflect.Uint64, reflect.Int, reflect.Int32, reflect.Int64:
 		return graphql.NewNonNull(graphql.Int), nil
 	case reflect.String:
 		return graphql.NewNonNull(graphql.String), nil
