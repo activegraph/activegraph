@@ -42,11 +42,12 @@ func TestNewQueryArgs_OK(t *testing.T) {
 		gotype interface{}
 		want   QueryArgs
 	}{
-		{struct{ Name string }{}, QueryArgs{"Name": graphql.NewNonNull(graphql.String)}},
+		{struct{ Name string }{}, QueryArgs{"name": graphql.NewNonNull(graphql.String)}},
 		{struct {
 			Key   int
 			Value *uint64
-		}{}, QueryArgs{"Key": graphql.NewNonNull(graphql.Int), "Value": graphql.Int}},
+		}{}, QueryArgs{"key": graphql.NewNonNull(graphql.Int), "value": graphql.Int}},
+		{struct{ UserName *string }{}, QueryArgs{"userName": graphql.String}},
 	}
 
 	for _, tt := range tests {
