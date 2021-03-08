@@ -1,8 +1,8 @@
 package resly
 
 import (
+	"context"
 	"encoding/json"
-	"errors"
 	"io/ioutil"
 	"mime"
 	"net/http"
@@ -11,7 +11,11 @@ import (
 	"time"
 
 	"github.com/graphql-go/graphql"
+	qlast "github.com/graphql-go/graphql/language/ast"
+	qlexpr "github.com/graphql-go/graphql/language/parser"
+	qlsrc "github.com/graphql-go/graphql/language/source"
 	"github.com/opentracing/opentracing-go"
+	"github.com/pkg/errors"
 )
 
 var (
@@ -30,10 +34,10 @@ func textHandler(status int, text string) http.HandlerFunc {
 	}
 }
 
-func parseURL(values url.Values) (gr Request, err error) {
+func parseURL(values url.Values) (*Request, error) {
 	query := values.Get("query")
 	if query == "" {
-		return gr, errors.New("request is missing mandatory 'query' URL parameter")
+		return nil, errors.New("request is missing mandatory 'query' URL parameter")
 	}
 
 	var (
@@ -42,72 +46,77 @@ func parseURL(values url.Values) (gr Request, err error) {
 	)
 
 	if varsRaw != "" {
-		if err = json.Unmarshal([]byte(varsRaw), &vars); err != nil {
-			return gr, err
+		if err := json.Unmarshal([]byte(varsRaw), &vars); err != nil {
+			return nil, err
 		}
 	}
 
-	return Request{
+	return &Request{
 		Query:         query,
 		Variables:     vars,
 		OperationName: values.Get("operationName"),
 	}, nil
 }
 
-func parseForm(r *http.Request) (gr Request, err error) {
+func parseForm(r *http.Request) (*Request, error) {
 	if err := r.ParseForm(); err != nil {
-		return gr, err
+		return nil, err
 	}
 	return parseURL(r.PostForm)
 }
 
-func parseGraphQL(r *http.Request) (gr Request, err error) {
+func parseGraphQL(r *http.Request) (*Request, error) {
 	body, err := ioutil.ReadAll(r.Body)
 	if err != nil {
-		return gr, err
+		return nil, err
 	}
-	return Request{Query: string(body)}, nil
+	return &Request{Query: string(body)}, nil
 }
 
 // parseBody parses GraphQL request from the request JSON body.
-func parseBody(r *http.Request) (gr Request, err error) {
+func parseBody(r *http.Request) (*Request, error) {
 	body, err := ioutil.ReadAll(r.Body)
 	if err != nil {
-		return gr, err
+		return nil, err
 	}
+	var gr Request
 	err = json.Unmarshal(body, &gr)
-	return gr, err
+	return &gr, err
 }
 
+// Request represents a GraphQL request received by server or to be sent by a client.
 type Request struct {
 	Query         string                 `json:"query"`
 	Variables     map[string]interface{} `json:"variables"`
 	OperationName string                 `json:"operationName"`
+
+	// ctx represents the execution context of the request.
+	ctx context.Context
+
+	// The parsed query as a GraphQL document.
+	document *qlast.Document `json:"-"`
 }
 
-// ParseRequest parses HTTP request and returns GraphQL request instance
-// that contains all required parameters.
+// Context returns the request's context.
 //
-// This function supports requests provided as part of URL parameters,
-// within body as pure GraphQL request, within body as JSON request, and
-// as part of form request.
-func ParseRequest(r *http.Request) (gr Request, err error) {
-	// Parse URL only when request is submitted with "GET" verb.
-	if r.Method == http.MethodGet {
-		return parseURL(r.URL.Query())
+// The returned context is always non-nil; it defaults to the background context.
+func (r *Request) Context() context.Context {
+	if r.ctx != nil {
+		return r.ctx
 	}
-	if r.Method != http.MethodPost {
-		return gr, errors.New("POST or GET verb is expected")
-	}
+	return context.Background()
+}
+
+func parsePost(r *http.Request) (gr *Request, err error) {
 	// For server requests body is always non-nil, but client request
 	// can be passed here as well.
 	if r.Body == nil {
-		return gr, errors.New("empty body for POST request")
+		return nil, errors.Errorf("empty body for %s request", http.MethodPost)
 	}
 
 	contentType, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
 	if err != nil {
-		return gr, err
+		return nil, err
 	}
 
 	switch contentType {
@@ -119,6 +128,71 @@ func ParseRequest(r *http.Request) (gr Request, err error) {
 		return parseBody(r)
 	}
 }
+
+// ParseRequest parses HTTP request and returns GraphQL request instance
+// that contains all required parameters.
+//
+// This function supports requests provided as part of URL parameters,
+// within body as pure GraphQL request, within body as JSON request, and
+// as part of form request.
+//
+// Method ensures that query contains a valid GraphQL document and returns an error
+// if it's not true.
+func ParseRequest(r *http.Request) (gr *Request, err error) {
+	// Parse URL only when request is submitted with "GET" verb.
+	switch r.Method {
+	case http.MethodGet:
+		gr, err = parseURL(r.URL.Query())
+	case http.MethodPost:
+		gr, err = parsePost(r)
+	default:
+		return gr, errors.Errorf("%s or %s verb is expected", http.MethodPost, http.MethodGet)
+	}
+
+	src := qlsrc.NewSource(&qlsrc.Source{
+		Body: []byte(gr.Query), Name: "Request Query",
+	})
+
+	gr.document, err = qlexpr.Parse(qlexpr.ParseParams{Source: src})
+	if err != nil {
+		return nil, err
+	}
+
+	// Copy the context of the HTTP request.
+	gr.ctx = r.Context()
+
+	return gr, nil
+}
+
+// ResponseWriter interface is used by a GraphQL handler to construct a response.
+type ResponseWriter interface {
+	Write(*graphql.Result) error
+}
+
+// Handler responds to a GraphQL request.
+//
+// Serve would write the reply to the ResponseWriter and then returns. Returning
+// signals that the request is finished.
+type Handler interface {
+	Serve(ResponseWriter, *Request)
+}
+
+func defaultHandler(rw ResponseWriter, r *Request) {
+	result := graphql.Execute(graphql.ExecuteParams{
+		//Schema:        nil, // TODO
+		//Root:          nil, // TODO
+		AST:           r.document,
+		OperationName: r.OperationName,
+		Args:          r.Variables,
+		Context:       r.Context(),
+	})
+
+	rw.Write(result)
+}
+
+type Callback func(ResponseWriter, *Request)
+
+type AroundCallback func(ResponseWriter, *Request, Handler)
 
 // Server is a handler used to serve GraphQL requests.
 type Server struct {
@@ -140,6 +214,61 @@ type Server struct {
 	Types     []TypeDef
 	Queries   []FuncDef
 	Mutations []FuncDef
+
+	aroundCbs []callbackOp
+	beforeCbs []callbackOp
+	afterCbs  []callbackOp
+}
+
+type callbackOp struct {
+	op string
+	cb Callback
+}
+
+const (
+	// GraphQL operations.
+	OperationQuery        = "query"        // a read-only fetch.
+	OperationMutation     = "mutation"     // a write followed by fetch.
+	OperationSubscription = "subscription" // unsupported yet.
+)
+
+// AppendAroundOp appends a callback after operations. See AroundCallback for parameter
+// details.
+//
+// Use the around callback to wrap the GraphQL handler with a logic, e.g. execute
+// the method in a read-only database transaction.
+//
+//	var s resly.Server
+//	var txKey = struct{}{}
+//
+//	s.AppendAroundOp(rs.OperationQuery, func(rw rs.ResponseWriter, r *rs.Request, h rs.Handler) {
+//		db.withRO(func(tx *db.Tx) error {
+//			// Put transaction into the request context.
+//			ctx = context.WithValue(r.Context(), txKey{}, tx)
+//			// Serve GraphQL request with a modified context.
+//			h.Serve(rw, r.WithContext(ctx))
+//		})
+//	})
+//
+func (s *Server) AppendAroundOp(op string, cb AroundCallback) {
+}
+
+// AppendBeforeOp appends a callback before operations. See BeforeCallback for parameter
+// details.
+func (s *Server) AppendBeforeOp(op string, cb Callback) {
+	if cb == nil {
+		panic("nil callback")
+	}
+	s.beforeCbs = append(s.beforeCbs, callbackOp{op, cb})
+}
+
+// AppendAfterOp appends a callback after operations. See AfterCallback for parameter
+// details
+func (s *Server) AppendAfterOp(op string, cb Callback) {
+	if cb == nil {
+		panic("nil callback")
+	}
+	s.afterCbs = append(s.afterCbs, callbackOp{op, cb})
 }
 
 // HandleType adds given type definitions in the list of the types.
@@ -209,13 +338,7 @@ func (s *Server) CreateSchema() (schema graphql.Schema, err error) {
 	return graphql.CreateSchema()
 }
 
-// GraphQLHandler returns a new HTTP handler that attempts to parse GraphQL
-// request from URL, body, or form and executes request using the specifies
-// schema.
-//
-// On failed request parsing and execution method writes plain error message
-// as a response.
-func GraphQLHandler(schema graphql.Schema) http.HandlerFunc {
+func graphqlHandler(e func(graphql.Params) *graphql.Result, schema graphql.Schema) http.HandlerFunc {
 	return func(rw http.ResponseWriter, r *http.Request) {
 		acceptHeader := r.Header.Get("Accept")
 		if _, ok := r.URL.Query()["raw"]; !ok && strings.Contains(acceptHeader, "text/html") {
@@ -238,7 +361,7 @@ func GraphQLHandler(schema graphql.Schema) http.HandlerFunc {
 			Context:        r.Context(),
 		}
 
-		b, err := json.Marshal(graphql.Do(params))
+		b, err := json.Marshal(e(params))
 		if err != nil {
 			h := textHandler(http.StatusInternalServerError, err.Error())
 			h.ServeHTTP(rw, r)
@@ -248,6 +371,16 @@ func GraphQLHandler(schema graphql.Schema) http.HandlerFunc {
 		rw.WriteHeader(http.StatusOK)
 		rw.Write(b)
 	}
+}
+
+// GraphQLHandler returns a new HTTP handler that attempts to parse GraphQL
+// request from URL, body, or form and executes request using the specifies
+// schema.
+//
+// On failed request parsing and execution method writes plain error message
+// as a response.
+func GraphQLHandler(schema graphql.Schema) http.HandlerFunc {
+	return graphqlHandler(graphql.Do, schema)
 }
 
 // HandleHTTP creates a new HTTP handler used to process GraphQL requests.
