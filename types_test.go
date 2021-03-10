@@ -20,7 +20,7 @@ func TestFuncCall_ValidateError(t *testing.T) {
 		return "", nil
 	})
 
-	_, err := fd.Call(context.TODO(), map[string]interface{}{})
+	_, err := fd.CallUnbound(context.TODO(), map[string]interface{}{})
 	assert.Error(t, errors.Cause(err), "validation failed")
 }
 
@@ -38,7 +38,7 @@ func TestFuncCall_ValidateOK(t *testing.T) {
 	})
 
 	call := func(arg1 string) bool {
-		_, err := fd.Call(context.TODO(), map[string]interface{}{
+		_, err := fd.CallUnbound(context.TODO(), map[string]interface{}{
 			"input": map[string]interface{}{"arg1": arg1},
 		})
 		return err == nil

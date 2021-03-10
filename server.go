@@ -14,7 +14,6 @@ import (
 	qlast "github.com/graphql-go/graphql/language/ast"
 	qlexpr "github.com/graphql-go/graphql/language/parser"
 	qlsrc "github.com/graphql-go/graphql/language/source"
-	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
 )
 
@@ -90,10 +89,16 @@ type Request struct {
 	Variables     map[string]interface{} `json:"variables"`
 	OperationName string                 `json:"operationName"`
 
+	// Header contains the request underlying HTTP header fields.
+	//
+	// These headers must be provided by the underlying HTTP request.
+	Header http.Header
+
 	// ctx represents the execution context of the request.
 	ctx context.Context
 
-	// The parsed query as a GraphQL document.
+	// Schema and parsed query as a GraphQL document.
+	schema   *graphql.Schema `json:"-"`
 	document *qlast.Document `json:"-"`
 }
 
@@ -105,6 +110,12 @@ func (r *Request) Context() context.Context {
 		return r.ctx
 	}
 	return context.Background()
+}
+
+// TODO: create a shallow copy of the request.
+func (r *Request) WithContext(ctx context.Context) *Request {
+	r.ctx = ctx
+	return r
 }
 
 func parsePost(r *http.Request) (gr *Request, err error) {
@@ -138,7 +149,7 @@ func parsePost(r *http.Request) (gr *Request, err error) {
 //
 // Method ensures that query contains a valid GraphQL document and returns an error
 // if it's not true.
-func ParseRequest(r *http.Request) (gr *Request, err error) {
+func ParseRequest(r *http.Request, schema *graphql.Schema) (gr *Request, err error) {
 	// Parse URL only when request is submitted with "GET" verb.
 	switch r.Method {
 	case http.MethodGet:
@@ -159,14 +170,25 @@ func ParseRequest(r *http.Request) (gr *Request, err error) {
 	}
 
 	// Copy the context of the HTTP request.
+	gr.Header = r.Header.Clone()
 	gr.ctx = r.Context()
+	gr.schema = schema
 
 	return gr, nil
 }
 
 // ResponseWriter interface is used by a GraphQL handler to construct a response.
 type ResponseWriter interface {
-	Write(*graphql.Result) error
+	Write(res *graphql.Result) error
+}
+
+type responseWriter struct {
+	result *graphql.Result
+}
+
+func (rw *responseWriter) Write(res *graphql.Result) error {
+	rw.result = res
+	return nil
 }
 
 // Handler responds to a GraphQL request.
@@ -177,10 +199,16 @@ type Handler interface {
 	Serve(ResponseWriter, *Request)
 }
 
-func defaultHandler(rw ResponseWriter, r *Request) {
+type HandlerFunc func(ResponseWriter, *Request)
+
+func (fn HandlerFunc) Serve(rw ResponseWriter, r *Request) {
+	fn(rw, r)
+}
+
+// DefaultHandler is a default handler used by GraphQLhandler.
+func DefaultHandler(rw ResponseWriter, r *Request) {
 	result := graphql.Execute(graphql.ExecuteParams{
-		//Schema:        nil, // TODO
-		//Root:          nil, // TODO
+		Schema:        *r.schema,
 		AST:           r.document,
 		OperationName: r.OperationName,
 		Args:          r.Variables,
@@ -206,23 +234,23 @@ type Server struct {
 	// Default is no timeout.
 	RequestTimeout time.Duration
 
-	// Tracer specifies an optional tracing implementation that is called
-	// when resolver of Type, Query, or Mutation is called during the
-	// processing of incoming request.
-	Tracer opentracing.Tracer
-
 	Types     []TypeDef
 	Queries   []FuncDef
 	Mutations []FuncDef
 
-	aroundCbs []callbackOp
-	beforeCbs []callbackOp
-	afterCbs  []callbackOp
+	callbacksAround []callbackAround
+	callbacksBefore []callback
+	callbacksAfter  []callback
 }
 
-type callbackOp struct {
+type callback struct {
 	op string
 	cb Callback
+}
+
+type callbackAround struct {
+	op string
+	cb AroundCallback
 }
 
 const (
@@ -251,15 +279,19 @@ const (
 //	})
 //
 func (s *Server) AppendAroundOp(op string, cb AroundCallback) {
+	if cb == nil {
+		panic("nil callback")
+	}
+	s.callbacksAround = append(s.callbacksAround, callbackAround{op, cb})
 }
 
-// AppendBeforeOp appends a callback before operations. See BeforeCallback for parameter
+// AppendBeforeOp appends a callback before operations. See Callback for parameter
 // details.
 func (s *Server) AppendBeforeOp(op string, cb Callback) {
 	if cb == nil {
 		panic("nil callback")
 	}
-	s.beforeCbs = append(s.beforeCbs, callbackOp{op, cb})
+	s.callbacksBefore = append(s.callbacksBefore, callback{op, cb})
 }
 
 // AppendAfterOp appends a callback after operations. See AfterCallback for parameter
@@ -268,7 +300,7 @@ func (s *Server) AppendAfterOp(op string, cb Callback) {
 	if cb == nil {
 		panic("nil callback")
 	}
-	s.afterCbs = append(s.afterCbs, callbackOp{op, cb})
+	s.callbacksAfter = append(s.callbacksAfter, callback{op, cb})
 }
 
 // HandleType adds given type definitions in the list of the types.
@@ -298,47 +330,26 @@ func (s *Server) HandleMutation(name string, fn interface{}) *Server {
 func (s *Server) CreateSchema() (schema graphql.Schema, err error) {
 	var graphql GraphQL
 
-	tracer := s.Tracer
-	if tracer == nil {
-		tracer = opentracing.NoopTracer{}
-	}
-
-	tracingClosure := DefineTracingFunc(tracer)
-	metricsClosure := DefineMetricsFunc(s.Name)
-
-	enclose := func(funcdef FuncDef) FuncDef {
-		return EncloseFunc(funcdef, metricsClosure, tracingClosure)
-	}
-
 	// Register all defined types and functions within a GraphQL compiler.
 	for _, typedef := range s.Types {
-		var (
-			typedef = typedef
-			funcs   = make(map[string]FuncDef, len(typedef.Funcs))
-		)
-		for name, funcdef := range typedef.Funcs {
-			funcs[name] = enclose(funcdef)
-		}
-		typedef.Funcs = funcs
-
 		if err = graphql.AddType(typedef); err != nil {
 			return schema, err
 		}
 	}
 	for _, funcdef := range s.Queries {
-		if err = graphql.AddQuery(enclose(funcdef)); err != nil {
+		if err = graphql.AddQuery(funcdef); err != nil {
 			return schema, err
 		}
 	}
 	for _, funcdef := range s.Mutations {
-		if err = graphql.AddMutation(enclose(funcdef)); err != nil {
+		if err = graphql.AddMutation(funcdef); err != nil {
 			return schema, err
 		}
 	}
 	return graphql.CreateSchema()
 }
 
-func graphqlHandler(e func(graphql.Params) *graphql.Result, schema graphql.Schema) http.HandlerFunc {
+func graphqlHandler(h Handler, schema graphql.Schema) http.HandlerFunc {
 	return func(rw http.ResponseWriter, r *http.Request) {
 		acceptHeader := r.Header.Get("Accept")
 		if _, ok := r.URL.Query()["raw"]; !ok && strings.Contains(acceptHeader, "text/html") {
@@ -346,22 +357,18 @@ func graphqlHandler(e func(graphql.Params) *graphql.Result, schema graphql.Schem
 			return
 		}
 
-		gr, err := ParseRequest(r)
+		gr, err := ParseRequest(r, &schema)
 		if err != nil {
 			h := textHandler(http.StatusBadRequest, err.Error())
 			h.ServeHTTP(rw, r)
 			return
 		}
 
-		params := graphql.Params{
-			Schema:         schema,
-			RequestString:  gr.Query,
-			VariableValues: gr.Variables,
-			OperationName:  gr.OperationName,
-			Context:        r.Context(),
-		}
+		// Serve the GraphQL request and write the result through HTTP.
+		var grw responseWriter
+		h.Serve(&grw, gr)
 
-		b, err := json.Marshal(e(params))
+		b, err := json.Marshal(grw.result)
 		if err != nil {
 			h := textHandler(http.StatusInternalServerError, err.Error())
 			h.ServeHTTP(rw, r)
@@ -380,7 +387,7 @@ func graphqlHandler(e func(graphql.Params) *graphql.Result, schema graphql.Schem
 // On failed request parsing and execution method writes plain error message
 // as a response.
 func GraphQLHandler(schema graphql.Schema) http.HandlerFunc {
-	return graphqlHandler(graphql.Do, schema)
+	return graphqlHandler(HandlerFunc(DefaultHandler), schema)
 }
 
 // HandleHTTP creates a new HTTP handler used to process GraphQL requests.
@@ -399,9 +406,6 @@ func (s *Server) HandleHTTP() http.Handler {
 	var handler http.Handler = GraphQLHandler(schema)
 	if s.RequestTimeout != 0 {
 		handler = http.TimeoutHandler(handler, s.RequestTimeout, ErrRequestTimeout.Error())
-	}
-	if s.Tracer != nil {
-		handler = TracingHandler(handler, s.Tracer)
 	}
 	return handler
 }

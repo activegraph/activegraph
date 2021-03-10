@@ -50,7 +50,7 @@ type FuncDef struct {
 	Out reflect.Type
 }
 
-func (fd FuncDef) call(in []reflect.Value) (interface{}, error) {
+func (fd FuncDef) Call(in []reflect.Value) (interface{}, error) {
 	out := fd.Func.Call(in)
 	res, err := out[0].Interface(), out[1].Interface()
 	if err != nil {
@@ -59,7 +59,7 @@ func (fd FuncDef) call(in []reflect.Value) (interface{}, error) {
 	return res, nil
 }
 
-func (fd FuncDef) Call(ctx context.Context, input interface{}) (interface{}, error) {
+func (fd FuncDef) CallUnbound(ctx context.Context, input interface{}) (interface{}, error) {
 	in := []reflect.Value{reflect.ValueOf(ctx)}
 	if fd.In != nil {
 		var (
@@ -77,11 +77,11 @@ func (fd FuncDef) Call(ctx context.Context, input interface{}) (interface{}, err
 		in = append(in, inValue.Elem())
 	}
 
-	return fd.call(in)
+	return fd.Call(in)
 }
 
 func (fd FuncDef) CallBound(ctx context.Context, source interface{}) (interface{}, error) {
-	return fd.call([]reflect.Value{reflect.ValueOf(ctx), reflect.ValueOf(source)})
+	return fd.Call([]reflect.Value{reflect.ValueOf(ctx), reflect.ValueOf(source)})
 }
 
 var errorType = reflect.TypeOf(make([]error, 1)).Elem()

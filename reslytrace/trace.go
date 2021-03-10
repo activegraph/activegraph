@@ -1,17 +1,18 @@
-package resly
+package reslytrace
 
 import (
 	"context"
-	"net/http"
 	"reflect"
 
 	"github.com/opentracing/opentracing-go"
 	"github.com/opentracing/opentracing-go/ext"
 	"github.com/opentracing/opentracing-go/log"
+
+	"github.com/resly/resly"
 )
 
-func DefineTracingFunc(tracer opentracing.Tracer) ClosureDef {
-	return func(funcdef FuncDef, in []reflect.Value) []reflect.Value {
+func DefineTracingFunc(tracer opentracing.Tracer) resly.ClosureDef {
+	return func(funcdef resly.FuncDef, in []reflect.Value) []reflect.Value {
 		var (
 			ctx context.Context = context.Background()
 		)
@@ -26,7 +27,7 @@ func DefineTracingFunc(tracer opentracing.Tracer) ClosureDef {
 		span, ctx := opentracing.StartSpanFromContextWithTracer(ctx, tracer, funcdef.Name)
 		defer span.Finish()
 
-		res, err := funcdef.call(in)
+		res, err := funcdef.Call(in)
 
 		if err != nil {
 			ext.Error.Set(span, true)
@@ -43,22 +44,13 @@ func DefineTracingFunc(tracer opentracing.Tracer) ClosureDef {
 	}
 }
 
-// TracingHandler returns an http.Handler with opentracing context.
+// TracingCallback returns an http.Handler with opentracing context.
 //
 // The new Handler calls h.ServeHTTP to handle each request, it open
 // span on each new request, logs query and variables, then closes
 // span when handler finishes execution.
-func TracingHandler(h http.Handler, tracer opentracing.Tracer) http.Handler {
-	return http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
-		defer func() {
-			h.ServeHTTP(rw, r)
-		}()
-
-		gr, err := ParseRequest(r)
-		if err != nil {
-			return
-		}
-
+func TracingCallback(tracer opentracing.Tracer) resly.AroundCallback {
+	return func(rw resly.ResponseWriter, r *resly.Request, h resly.Handler) {
 		wireContext, err := tracer.Extract(
 			opentracing.HTTPHeaders,
 			opentracing.HTTPHeadersCarrier(r.Header),
@@ -67,15 +59,17 @@ func TracingHandler(h http.Handler, tracer opentracing.Tracer) http.Handler {
 			return
 		}
 
-		span := opentracing.StartSpan(gr.OperationName, ext.RPCServerOption(wireContext))
+		span := opentracing.StartSpan(r.OperationName, ext.RPCServerOption(wireContext))
 		span.LogFields(
-			log.String("query", gr.Query),
-			log.Object("variables", gr.Variables),
+			log.String("query", r.Query),
+			log.Object("variables", r.Variables),
 		)
 
 		defer span.Finish()
 
 		ctx := opentracing.ContextWithSpan(r.Context(), span)
 		r = r.WithContext(ctx)
-	})
+
+		h.Serve(rw, r)
+	}
 }
