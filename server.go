@@ -102,6 +102,21 @@ type Request struct {
 	document *qlast.Document `json:"-"`
 }
 
+func (r *Request) Operation() string {
+	if r.document == nil {
+		return OperationUnknown
+	}
+	if len(r.document.Definitions) < 1 {
+		return OperationUnknown
+	}
+
+	opdef, ok := r.document.Definitions[0].(*qlast.OperationDefinition)
+	if !ok {
+		return OperationUnknown
+	}
+	return opdef.Operation
+}
+
 // Context returns the request's context.
 //
 // The returned context is always non-nil; it defaults to the background context.
@@ -248,9 +263,25 @@ type callback struct {
 	cb Callback
 }
 
+func (c *callback) trycall(rw ResponseWriter, r *Request) bool {
+	if r.Operation() == c.op {
+		c.cb(rw, r)
+		return true
+	}
+	return false
+}
+
 type callbackAround struct {
 	op string
 	cb AroundCallback
+}
+
+func (c *callbackAround) trycall(rw ResponseWriter, r *Request, h Handler) bool {
+	if r.Operation() == c.op {
+		c.cb(rw, r, h)
+		return true
+	}
+	return false
 }
 
 const (
@@ -258,6 +289,7 @@ const (
 	OperationQuery        = "query"        // a read-only fetch.
 	OperationMutation     = "mutation"     // a write followed by fetch.
 	OperationSubscription = "subscription" // unsupported yet.
+	OperationUnknown      = ""
 )
 
 // AppendAroundOp appends a callback after operations. See AroundCallback for parameter
@@ -287,6 +319,22 @@ func (s *Server) AppendAroundOp(op string, cb AroundCallback) {
 
 // AppendBeforeOp appends a callback before operations. See Callback for parameter
 // details.
+//
+// Use the before callback to execute necessary logic before executing a graph, the
+// implementation could completely override the behavior of the GraphQL call:
+//
+//	var s resly.Server
+//
+//	// Since HTTP middleware does not differenciate different GrapQL operations
+//	// there is no other way of limiting access to specific queries other than
+//	// accessing GraphQL requests.
+//	s.AppendBeforeOp(OperationMutation, func(rw rs.ResponseWriter, r *rs.Request) {
+//		if !isQueryAuthorized(rw, r) {
+//			rw.Write(&graphql.Result{
+//				Errors: []graphql.FormattedError{Message: "unauthorized"},
+//			})
+//		}
+//	})
 func (s *Server) AppendBeforeOp(op string, cb Callback) {
 	if cb == nil {
 		panic("nil callback")
@@ -306,6 +354,18 @@ func (s *Server) AppendAfterOp(op string, cb Callback) {
 // HandleType adds given type definitions in the list of the types.
 func (s *Server) HandleType(typedef ...TypeDef) *Server {
 	s.Types = append(s.Types, typedef...)
+	return s
+}
+
+func (s *Server) HandleOperation(op string, funcdef ...FuncDef) *Server {
+	switch op {
+	case OperationMutation:
+		s.Mutations = append(s.Mutations, funcdef...)
+	case OperationQuery:
+		s.Queries = append(s.Queries, funcdef...)
+	default:
+		panic("unsupported operation")
+	}
 	return s
 }
 
@@ -403,7 +463,42 @@ func (s *Server) HandleHTTP() http.Handler {
 		panic(err)
 	}
 
-	var handler http.Handler = GraphQLHandler(schema)
+	encloseHandler := func(h Handler, around callbackAround) HandlerFunc {
+		return func(rw ResponseWriter, r *Request) {
+			if !around.trycall(rw, r, h) {
+				h.Serve(rw, r)
+			}
+		}
+	}
+
+	// Wrap all registered AroundCallbacks to execute them in order: the latest
+	// registered callback should be executed last.
+	var h Handler = HandlerFunc(DefaultHandler)
+	for _, cb := range s.callbacksAround {
+		h = encloseHandler(h, cb)
+	}
+
+	// Add before/after callbacks to the original handler, copy original
+	// lists of callbacks to prevent concurrent modification after handler creation.
+	before := make([]callback, len(s.callbacksBefore))
+	after := make([]callback, len(s.callbacksAfter))
+
+	copy(before, s.callbacksBefore)
+	copy(after, s.callbacksAfter)
+
+	var handlerFn HandlerFunc = func(rw ResponseWriter, r *Request) {
+		for i := range before {
+			before[i].trycall(rw, r)
+		}
+
+		h.Serve(rw, r)
+
+		for i := range after {
+			after[i].trycall(rw, r)
+		}
+	}
+
+	var handler http.Handler = graphqlHandler(handlerFn, schema)
 	if s.RequestTimeout != 0 {
 		handler = http.TimeoutHandler(handler, s.RequestTimeout, ErrRequestTimeout.Error())
 	}
