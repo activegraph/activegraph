@@ -184,7 +184,7 @@ func newMutationFunc(funcdef FuncDef) graphql.FieldResolveFn {
 		if !ok {
 			return nil, errors.New("missing 'input' argument in the mutation " + funcdef.Name)
 		}
-		return funcdef.Call(p.Context, input)
+		return funcdef.CallUnbound(p.Context, input)
 	}
 }
 
@@ -224,7 +224,7 @@ func newQueryArgs(gotype reflect.Type, types map[string]graphql.Type) (
 
 func newQueryFunc(funcdef FuncDef) graphql.FieldResolveFn {
 	return func(p graphql.ResolveParams) (interface{}, error) {
-		return funcdef.Call(p.Context, p.Args)
+		return funcdef.CallUnbound(p.Context, p.Args)
 	}
 }
 
