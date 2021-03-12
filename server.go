@@ -8,19 +8,12 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
-	"time"
 
 	"github.com/graphql-go/graphql"
 	qlast "github.com/graphql-go/graphql/language/ast"
 	qlexpr "github.com/graphql-go/graphql/language/parser"
 	qlsrc "github.com/graphql-go/graphql/language/source"
 	"github.com/pkg/errors"
-)
-
-var (
-	// ErrRequestTimeout is returned when request takes too much time
-	// to process it.
-	ErrRequestTimeout = errors.New("request processing timed out")
 )
 
 // textHandler creates an HTTP handler that writes the given string
@@ -195,6 +188,8 @@ func ParseRequest(r *http.Request, schema *graphql.Schema) (gr *Request, err err
 // ResponseWriter interface is used by a GraphQL handler to construct a response.
 type ResponseWriter interface {
 	Write(res *graphql.Result) error
+
+	IsWritten() bool
 }
 
 type responseWriter struct {
@@ -204,6 +199,10 @@ type responseWriter struct {
 func (rw *responseWriter) Write(res *graphql.Result) error {
 	rw.result = res
 	return nil
+}
+
+func (rw *responseWriter) IsWritten() bool {
+	return rw.result != nil
 }
 
 // Handler responds to a GraphQL request.
@@ -242,13 +241,6 @@ type Server struct {
 	// Name of the server. Will be used to emit metrics about resolvers.
 	Name string
 
-	// RequestTimeout is the maximum duration for handling the entire
-	// request. When set to 0, request processing takes as much time
-	// as needed.
-	//
-	// Default is no timeout.
-	RequestTimeout time.Duration
-
 	Types     []TypeDef
 	Queries   []FuncDef
 	Mutations []FuncDef
@@ -263,12 +255,11 @@ type callback struct {
 	cb Callback
 }
 
-func (c *callback) trycall(rw ResponseWriter, r *Request) bool {
+// Serve implements Handler interface, so it can be used as a regular Handler.
+func (c *callback) Serve(rw ResponseWriter, r *Request) {
 	if r.Operation() == c.op {
 		c.cb(rw, r)
-		return true
 	}
-	return false
 }
 
 type callbackAround struct {
@@ -276,12 +267,14 @@ type callbackAround struct {
 	cb AroundCallback
 }
 
-func (c *callbackAround) trycall(rw ResponseWriter, r *Request, h Handler) bool {
-	if r.Operation() == c.op {
-		c.cb(rw, r, h)
-		return true
+func (c *callbackAround) createHandler(h Handler) HandlerFunc {
+	return func(rw ResponseWriter, r *Request) {
+		if r.Operation() == c.op {
+			c.cb(rw, r, h)
+		} else {
+			h.Serve(rw, r)
+		}
 	}
-	return false
 }
 
 const (
@@ -321,7 +314,11 @@ func (s *Server) AppendAroundOp(op string, cb AroundCallback) {
 // details.
 //
 // Use the before callback to execute necessary logic before executing a graph, the
-// implementation could completely override the behavior of the GraphQL call:
+// implementation could completely override the behavior of the GraphQL call.
+//
+// The chain of "before" callbacks execution interrupts when the response was written
+// the ResponseWriter. It's anticipated that before filters are often used to
+// prevent from execution certain operations or queries.
 //
 //	var s resly.Server
 //
@@ -450,6 +447,28 @@ func GraphQLHandler(schema graphql.Schema) http.HandlerFunc {
 	return graphqlHandler(HandlerFunc(DefaultHandler), schema)
 }
 
+type callbackHandler struct {
+	handler Handler
+	before  []callback
+	after   []callback
+}
+
+func (ch *callbackHandler) Serve(rw ResponseWriter, r *Request) {
+	for i := range ch.before {
+		if !rw.IsWritten() {
+			ch.before[i].Serve(rw, r)
+		} else {
+			return
+		}
+	}
+
+	ch.handler.Serve(rw, r)
+
+	for i := range ch.after {
+		ch.after[i].Serve(rw, r)
+	}
+}
+
 // HandleHTTP creates a new HTTP handler used to process GraphQL requests.
 //
 // This function registers all type and function definitions in the GraphQL
@@ -463,19 +482,11 @@ func (s *Server) HandleHTTP() http.Handler {
 		panic(err)
 	}
 
-	encloseHandler := func(h Handler, around callbackAround) HandlerFunc {
-		return func(rw ResponseWriter, r *Request) {
-			if !around.trycall(rw, r, h) {
-				h.Serve(rw, r)
-			}
-		}
-	}
-
 	// Wrap all registered AroundCallbacks to execute them in order: the latest
 	// registered callback should be executed last.
 	var h Handler = HandlerFunc(DefaultHandler)
-	for _, cb := range s.callbacksAround {
-		h = encloseHandler(h, cb)
+	for i := range s.callbacksAround {
+		h = s.callbacksAround[i].createHandler(h)
 	}
 
 	// Add before/after callbacks to the original handler, copy original
@@ -486,21 +497,6 @@ func (s *Server) HandleHTTP() http.Handler {
 	copy(before, s.callbacksBefore)
 	copy(after, s.callbacksAfter)
 
-	var handlerFn HandlerFunc = func(rw ResponseWriter, r *Request) {
-		for i := range before {
-			before[i].trycall(rw, r)
-		}
-
-		h.Serve(rw, r)
-
-		for i := range after {
-			after[i].trycall(rw, r)
-		}
-	}
-
-	var handler http.Handler = graphqlHandler(handlerFn, schema)
-	if s.RequestTimeout != 0 {
-		handler = http.TimeoutHandler(handler, s.RequestTimeout, ErrRequestTimeout.Error())
-	}
-	return handler
+	h = &callbackHandler{h, before, after}
+	return graphqlHandler(h, schema)
 }
