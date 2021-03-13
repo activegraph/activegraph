@@ -1,4 +1,4 @@
-module github.com/resly/resly
+module github.com/activegraph/activegraph
 
 go 1.12
 

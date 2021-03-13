@@ -1,4 +1,4 @@
-package reslytrace
+package activetrace
 
 import (
 	"reflect"
@@ -7,11 +7,11 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
-	"github.com/resly/resly"
+	"github.com/activegraph/activegraph"
 )
 
 // DefineMetricsFunc retruns a closure to measure the duration of the function.
-func DefineMetricsFunc(subsystem string) resly.ClosureDef {
+func DefineMetricsFunc(subsystem string) activegraph.ClosureDef {
 	requestDurationHistogramVec := promauto.NewHistogramVec(
 		prometheus.HistogramOpts{
 			Subsystem: subsystem,
@@ -21,7 +21,7 @@ func DefineMetricsFunc(subsystem string) resly.ClosureDef {
 		[]string{"query"},
 	)
 
-	return func(funcdef resly.FuncDef, in []reflect.Value) []reflect.Value {
+	return func(funcdef activegraph.FuncDef, in []reflect.Value) []reflect.Value {
 		start := time.Now()
 		defer func() {
 			hist := requestDurationHistogramVec.WithLabelValues(funcdef.Name)

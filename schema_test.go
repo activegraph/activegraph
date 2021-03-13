@@ -1,4 +1,4 @@
-package resly
+package activegraph
 
 import (
 	"reflect"

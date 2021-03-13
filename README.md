@@ -1,22 +1,22 @@
-# [Resly](https://resly.github.io) &middot; [![Tests][Tests]](https://github.com/resly/resly) [![Documentation][Documentation]](https://godoc.org/github.com/resly/resly)
+# [ActiveGraph](https://activegraph.github.io) &middot; [![Tests][Tests]](https://github.com/activegraph/activegraph) [![Documentation][Documentation]](https://godoc.org/github.com/activegraph/activegraph)
 
 GraphQL-powered server framework for Go.
 
 ## Installation
 
-You can install the latest version of the Resly module using `go mod`:
+You can install the latest version of the ActiveGraph module using `go mod`:
 ```bash
-go get github.com/resly/resly
+go get github.com/activegraph/activegraph
 ```
 
 ## Documentation
 
-The [Resly Documentation](https://resly.github.io) contains additional
-details on how to get started with GraphQL and Resly.
+The [ActiveGraph Documentation](https://activegraph.github.io) contains additional
+details on how to get started with GraphQL and ActiveGraph.
 
 ## Usage
 
-Implementation of the Resly, comparing to other Go frameworks does not require
+Implementation of the ActiveGraph, comparing to other Go frameworks does not require
 GraphQL schema declaration. Instead, it is highly anticipated to work with
 business models of the service as API entities for GraphQL server.
 
@@ -25,7 +25,7 @@ business models of the service as API entities for GraphQL server.
 import "context"
 import "net/http"
 
-import "github.com/resly/resly"
+import "github.com/activegraph/activegraph"
 
 
 func main() {
@@ -34,9 +34,9 @@ func main() {
         return []string{"Steve", "Wozniak"}, nil
     }
 
-    // Create Resly server with a single GraphQL query.
-    s := resly.Server {
-        Queries: []resly.FuncDef{resly.NewFunc("names", queryNames)},
+    // Create ActiveGraph server with a single GraphQL query.
+    s := activegraph.Server {
+        Queries: []activegraph.FuncDef{activegraph.NewFunc("names", queryNames)},
     }
 
     // Serve GraphQL service at "localhost:8000/graphql" endpoint.
@@ -47,7 +47,7 @@ func main() {
 
 ## License
 
-Resly is [MIT licensed](LICENSE).
+ActiveGraph is [MIT licensed](LICENSE).
 
-[Tests]: https://github.com/resly/resly/workflows/Tests/badge.svg
-[Documentation]: https://godoc.org/github.com/resly/resly?status.svg
+[Tests]: https://github.com/activegraph/activegraph/workflows/Tests/badge.svg
+[Documentation]: https://godoc.org/github.com/activegraph/activegraph?status.svg
