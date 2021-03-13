@@ -1,4 +1,4 @@
-package resly
+package activegraph
 
 import (
 	"context"
@@ -291,7 +291,7 @@ const (
 // Use the around callback to wrap the GraphQL handler with a logic, e.g. execute
 // the method in a read-only database transaction.
 //
-//	var s resly.Server
+//	var s activegraph.Server
 //	var txKey = struct{}{}
 //
 //	s.AppendAroundOp(rs.OperationQuery, func(rw rs.ResponseWriter, r *rs.Request, h rs.Handler) {
@@ -320,7 +320,7 @@ func (s *Server) AppendAroundOp(op string, cb AroundCallback) {
 // the ResponseWriter. It's anticipated that before filters are often used to
 // prevent from execution certain operations or queries.
 //
-//	var s resly.Server
+//	var s activegraph.Server
 //
 //	// Since HTTP middleware does not differenciate different GrapQL operations
 //	// there is no other way of limiting access to specific queries other than

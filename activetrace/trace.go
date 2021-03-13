@@ -1,4 +1,4 @@
-package reslytrace
+package activetrace
 
 import (
 	"context"
@@ -8,11 +8,11 @@ import (
 	"github.com/opentracing/opentracing-go/ext"
 	"github.com/opentracing/opentracing-go/log"
 
-	"github.com/resly/resly"
+	"github.com/activegraph/activegraph"
 )
 
-func DefineTracingFunc(tracer opentracing.Tracer) resly.ClosureDef {
-	return func(funcdef resly.FuncDef, in []reflect.Value) []reflect.Value {
+func DefineTracingFunc(tracer opentracing.Tracer) activegraph.ClosureDef {
+	return func(funcdef activegraph.FuncDef, in []reflect.Value) []reflect.Value {
 		var (
 			ctx context.Context = context.Background()
 		)
@@ -49,8 +49,8 @@ func DefineTracingFunc(tracer opentracing.Tracer) resly.ClosureDef {
 // The new Handler calls h.ServeHTTP to handle each request, it open
 // span on each new request, logs query and variables, then closes
 // span when handler finishes execution.
-func TracingCallback(tracer opentracing.Tracer) resly.AroundCallback {
-	return func(rw resly.ResponseWriter, r *resly.Request, h resly.Handler) {
+func TracingCallback(tracer opentracing.Tracer) activegraph.AroundCallback {
+	return func(rw activegraph.ResponseWriter, r *activegraph.Request, h activegraph.Handler) {
 		wireContext, err := tracer.Extract(
 			opentracing.HTTPHeaders,
 			opentracing.HTTPHeadersCarrier(r.Header),

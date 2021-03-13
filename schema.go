@@ -1,4 +1,4 @@
-package resly
+package activegraph
 
 import (
 	"reflect"
@@ -45,7 +45,7 @@ func (c *GraphQL) AddType(typedef TypeDef) error {
 	c.init()
 
 	if _, exist := c.outputs[typedef.Name]; exist {
-		return errors.New("resly: multiple type registrations for " + typedef.Name)
+		return errors.New("activegraph: multiple type registrations for " + typedef.Name)
 	}
 
 	// Create a new GraphQL object from the Go type definition.
@@ -56,7 +56,7 @@ func (c *GraphQL) AddType(typedef TypeDef) error {
 
 	obj, isObject := graphql.GetNullable(gqltype).(*graphql.Object)
 	if !isObject {
-		return errors.New("resly: type expected to be an object")
+		return errors.New("activegraph: type expected to be an object")
 	}
 
 	// Add methods for a new GraphQL type. All methods should be
@@ -81,7 +81,7 @@ func (c *GraphQL) AddType(typedef TypeDef) error {
 func (c *GraphQL) AddQuery(funcdef FuncDef) error {
 	c.init()
 	if _, dup := c.queries[funcdef.Name]; dup {
-		return errors.New("resly: multiple registrations for " + funcdef.Name)
+		return errors.New("activegraph: multiple registrations for " + funcdef.Name)
 	}
 
 	in, err := newQueryArgs(funcdef.In, c.inputs)
@@ -105,7 +105,7 @@ func (c *GraphQL) AddQuery(funcdef FuncDef) error {
 func (c *GraphQL) AddMutation(funcdef FuncDef) (err error) {
 	c.init()
 	if _, dup := c.mutations[funcdef.Name]; dup {
-		return errors.New("resly: multiple registrations for " + funcdef.Name)
+		return errors.New("activegraph: multiple registrations for " + funcdef.Name)
 	}
 
 	in, err := newMutationArgs(funcdef.In, c.inputs)
@@ -317,6 +317,6 @@ func newType(
 		types[obj.Name()] = graphql.NewNonNull(obj)
 		return types[obj.Name()], nil
 	default:
-		return gqltype, errors.New("resly: unsupported type " + gotype.String())
+		return gqltype, errors.New("activegraph: unsupported type " + gotype.String())
 	}
 }
