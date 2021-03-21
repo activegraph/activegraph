@@ -27,7 +27,7 @@ func TestServer_ServeHTTPBasic(t *testing.T) {
 	}
 
 	test := func(result []string) bool {
-		s := Server{
+		s := Controller{
 			Name: genString(),
 			Queries: []FuncDef{
 				NewFunc("posts", func(ctx context.Context) ([]string, error) {

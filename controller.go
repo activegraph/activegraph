@@ -236,8 +236,8 @@ type Callback func(ResponseWriter, *Request)
 
 type AroundCallback func(ResponseWriter, *Request, Handler)
 
-// Server is a handler used to serve GraphQL requests.
-type Server struct {
+// Controller is a handler used to serve GraphQL requests.
+type Controller struct {
 	// Name of the server. Will be used to emit metrics about resolvers.
 	Name string
 
@@ -291,7 +291,7 @@ const (
 // Use the around callback to wrap the GraphQL handler with a logic, e.g. execute
 // the method in a read-only database transaction.
 //
-//	var s activegraph.Server
+//	var s activegraph.Controller
 //	var txKey = struct{}{}
 //
 //	s.AppendAroundOp(rs.OperationQuery, func(rw rs.ResponseWriter, r *rs.Request, h rs.Handler) {
@@ -303,7 +303,7 @@ const (
 //		})
 //	})
 //
-func (s *Server) AppendAroundOp(op string, cb AroundCallback) {
+func (s *Controller) AppendAroundOp(op string, cb AroundCallback) {
 	if cb == nil {
 		panic("nil callback")
 	}
@@ -320,7 +320,7 @@ func (s *Server) AppendAroundOp(op string, cb AroundCallback) {
 // the ResponseWriter. It's anticipated that before filters are often used to
 // prevent from execution certain operations or queries.
 //
-//	var s activegraph.Server
+//	var s activegraph.Controller
 //
 //	// Since HTTP middleware does not differenciate different GrapQL operations
 //	// there is no other way of limiting access to specific queries other than
@@ -332,7 +332,7 @@ func (s *Server) AppendAroundOp(op string, cb AroundCallback) {
 //			})
 //		}
 //	})
-func (s *Server) AppendBeforeOp(op string, cb Callback) {
+func (s *Controller) AppendBeforeOp(op string, cb Callback) {
 	if cb == nil {
 		panic("nil callback")
 	}
@@ -341,35 +341,35 @@ func (s *Server) AppendBeforeOp(op string, cb Callback) {
 
 // AppendAfterOp appends a callback after operations. See AfterCallback for parameter
 // details
-func (s *Server) AppendAfterOp(op string, cb Callback) {
+func (c *Controller) AppendAfterOp(op string, cb Callback) {
 	if cb == nil {
 		panic("nil callback")
 	}
-	s.callbacksAfter = append(s.callbacksAfter, callback{op, cb})
+	c.callbacksAfter = append(c.callbacksAfter, callback{op, cb})
 }
 
 // HandleType adds given type definitions in the list of the types.
-func (s *Server) HandleType(typedef ...TypeDef) *Server {
-	s.Types = append(s.Types, typedef...)
-	return s
+func (c *Controller) HandleType(typedef ...TypeDef) *Controller {
+	c.Types = append(c.Types, typedef...)
+	return c
 }
 
-func (s *Server) HandleOperation(op string, funcdef ...FuncDef) *Server {
+func (c *Controller) HandleOperation(op string, funcdef ...FuncDef) *Controller {
 	switch op {
 	case OperationMutation:
-		s.Mutations = append(s.Mutations, funcdef...)
+		c.Mutations = append(c.Mutations, funcdef...)
 	case OperationQuery:
-		s.Queries = append(s.Queries, funcdef...)
+		c.Queries = append(c.Queries, funcdef...)
 	default:
 		panic("unsupported operation")
 	}
-	return s
+	return c
 }
 
 // HandleQuery adds given function definition in the list of queries.
-func (s *Server) HandleQuery(name string, fn interface{}) *Server {
-	s.Queries = append(s.Queries, NewFunc(name, fn))
-	return s
+func (c *Controller) HandleQuery(name string, fn interface{}) *Controller {
+	c.Queries = append(c.Queries, NewFunc(name, fn))
+	return c
 }
 
 // HandleMutation adds given function definition in the list of mutations.
@@ -377,28 +377,28 @@ func (s *Server) HandleQuery(name string, fn interface{}) *Server {
 // Note, that GraphQL does not allow to use the same type as input and as
 // an output within a single mutation. Therefore a common practice is to
 // define input types as mutation input.
-func (s *Server) HandleMutation(name string, fn interface{}) *Server {
-	s.Mutations = append(s.Mutations, NewFunc(name, fn))
-	return s
+func (c *Controller) HandleMutation(name string, fn interface{}) *Controller {
+	c.Mutations = append(c.Mutations, NewFunc(name, fn))
+	return c
 }
 
 // CreateSchema returns compiled GraphQL schema from type and function
 // definitions.
-func (s *Server) CreateSchema() (schema graphql.Schema, err error) {
+func (c *Controller) CreateSchema() (schema graphql.Schema, err error) {
 	var graphql GraphQL
 
 	// Register all defined types and functions within a GraphQL compiler.
-	for _, typedef := range s.Types {
+	for _, typedef := range c.Types {
 		if err = graphql.AddType(typedef); err != nil {
 			return schema, err
 		}
 	}
-	for _, funcdef := range s.Queries {
+	for _, funcdef := range c.Queries {
 		if err = graphql.AddQuery(funcdef); err != nil {
 			return schema, err
 		}
 	}
-	for _, funcdef := range s.Mutations {
+	for _, funcdef := range c.Mutations {
 		if err = graphql.AddMutation(funcdef); err != nil {
 			return schema, err
 		}
@@ -475,9 +475,9 @@ func (ch *callbackHandler) Serve(rw ResponseWriter, r *Request) {
 // schema. Produced schema will be used to resolve requests.
 //
 // On duplicate types, queries or mutations, function panics.
-func (s *Server) HandleHTTP() http.Handler {
+func (c *Controller) HandleHTTP() http.Handler {
 	// There is no reason to create a server that always returns errors.
-	schema, err := s.CreateSchema()
+	schema, err := c.CreateSchema()
 	if err != nil {
 		panic(err)
 	}
@@ -485,17 +485,17 @@ func (s *Server) HandleHTTP() http.Handler {
 	// Wrap all registered AroundCallbacks to execute them in order: the latest
 	// registered callback should be executed last.
 	var h Handler = HandlerFunc(DefaultHandler)
-	for i := range s.callbacksAround {
-		h = s.callbacksAround[i].createHandler(h)
+	for i := range c.callbacksAround {
+		h = c.callbacksAround[i].createHandler(h)
 	}
 
 	// Add before/after callbacks to the original handler, copy original
 	// lists of callbacks to prevent concurrent modification after handler creation.
-	before := make([]callback, len(s.callbacksBefore))
-	after := make([]callback, len(s.callbacksAfter))
+	before := make([]callback, len(c.callbacksBefore))
+	after := make([]callback, len(c.callbacksAfter))
 
-	copy(before, s.callbacksBefore)
-	copy(after, s.callbacksAfter)
+	copy(before, c.callbacksBefore)
+	copy(after, c.callbacksAfter)
 
 	h = &callbackHandler{h, before, after}
 	return graphqlHandler(h, schema)
