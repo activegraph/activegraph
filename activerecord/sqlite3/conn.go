@@ -48,6 +48,11 @@ func (c *Conn) BuildInsertStmt(op *activerecord.InsertOperation) string {
 	return fmt.Sprintf(stmt, op.TableName, colBuf.String(), valBuf.String())
 }
 
+func (c *Conn) BuildDeleteStmt(op *activerecord.DeleteOperation) string {
+	const stmt = `DELETE FROM "%s" WHERE "%s" = '%v'`
+	return fmt.Sprint(stmt, op.TableName, op.PrimaryKey, op.Value)
+}
+
 func (c *Conn) ExecInsert(ctx context.Context, sql string, args ...interface{}) error {
 	fmt.Println(sql)
 	result, err := c.db.ExecContext(ctx, sql)

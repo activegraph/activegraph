@@ -2,8 +2,6 @@ package activerecord
 
 import (
 	"fmt"
-
-	"github.com/pkg/errors"
 )
 
 const (
@@ -12,96 +10,56 @@ const (
 )
 
 type Attribute interface {
-	Name() string
+	AttributeName() string
+	IsPrimaryKey() bool
 	CastType() string
-	Validate(value interface{}) error
+
+	Validator
 }
 
-type RWAttr struct {
-	name       string
-	castType   string
-	validators []func(interface{}) error
+type IntAttr struct {
+	Name       string
+	PrimaryKey bool
+	Validates  IntValidators
 }
 
-// Name returns the name of the attribute.
-func (a *RWAttr) Name() string {
-	return a.name
+func (a IntAttr) AttributeName() string            { return a.Name }
+func (a IntAttr) IsPrimaryKey() bool               { return a.PrimaryKey }
+func (a IntAttr) CastType() string                 { return Int }
+func (a IntAttr) Validate(value interface{}) error { return a.Validates.Validate(value) }
+
+type StringAttr struct {
+	Name       string
+	PrimaryKey bool
+	Validates  StringValidators
 }
 
-func (a *RWAttr) CastType() string {
-	return a.castType
-}
+func (a StringAttr) AttributeName() string            { return a.Name }
+func (a StringAttr) IsPrimaryKey() bool               { return a.PrimaryKey }
+func (a StringAttr) CastType() string                 { return String }
+func (a StringAttr) Validate(value interface{}) error { return a.Validates.Validate(value) }
 
-func (a *RWAttr) Ensure(func(interface{}) error) *RWAttr {
-	return a
-}
-
-func (a *RWAttr) Validate(val interface{}) error {
-	for i := 0; i < len(a.validators); i++ {
-		if err := a.validators[i](val); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func Attr(name string, castType string) *RWAttr {
-	return &RWAttr{name: name, castType: castType}
-}
-
-func MaxLen(num int) func(interface{}) error {
-	if num < 0 {
-		panic("num is less zero")
-	}
-	return func(val interface{}) error {
-		s, ok := val.(string)
-		if !ok {
-			return errors.Errorf("%q is not a string", val)
-		}
-		if len(s) > num {
-			return errors.Errorf("%q lenght is >%d", val, num)
-		}
-		return nil
-	}
-}
-
-type AssocAttr struct {
-	model   string
-	through *string
-}
-
-func (a *AssocAttr) Name() string {
-	return a.model
-}
-
-func (a *AssocAttr) CastType() string {
-	return ""
-}
-
-func (a *AssocAttr) Validate(value interface{}) error {
-	return nil
-}
-
-func (a *AssocAttr) Through(attr string) *AssocAttr {
-	a.through = &attr
-	return a
-}
-
-func BelongsTo(model string) *AssocAttr {
-	return &AssocAttr{model: model}
-}
-
+// ErrUnknownAttribute is returned on attempt to assign unknown attribute to the
+// ActiveRecord.
 type ErrUnknownAttribute struct {
 	RecordName string
 	Attr       string
 }
 
+// Error returns a string representation of the error.
 func (e *ErrUnknownAttribute) Error() string {
 	return fmt.Sprintf("unknown attribute %q for %s", e.Attr, e.RecordName)
 }
 
+const (
+	// default name of the primary key.
+	defaultPrimaryKeyName = "id"
+)
+
+// attributes of the ActiveRecord.
 type attributes struct {
 	recordName string
+	primaryKey Attribute
 	keys       map[string]Attribute
 	values     map[string]interface{}
 }
@@ -111,11 +69,38 @@ func newAttributes(
 	recordName string, attrs []Attribute, values map[string]interface{},
 ) attributes {
 
-	keys := make(map[string]Attribute, len(attrs))
+	var (
+		primaryKey Attribute
+		keys       = make(map[string]Attribute, len(attrs))
+	)
 	for i := 0; i < len(attrs); i++ {
-		keys[attrs[i].Name()] = attrs[i]
+		keys[attrs[i].AttributeName()] = attrs[i]
+
+		if attrs[i].IsPrimaryKey() {
+			if primaryKey != nil {
+				panic("multiple primary keys are not allowed")
+			}
+			primaryKey = attrs[i]
+		}
 	}
-	return attributes{recordName, keys, values}
+
+	// When the primary key attribute was not specified directly, generate
+	// a new "id" integer attribute, ensure that the attribute with the same
+	// name is not presented in the schema definition.
+	if _, dup := keys[defaultPrimaryKeyName]; dup {
+		panic(fmt.Sprintf("%q is an attribute, but not a primary key", defaultPrimaryKeyName))
+	}
+	if primaryKey == nil {
+		primaryKey = IntAttr{Name: defaultPrimaryKeyName, PrimaryKey: true}
+		keys[defaultPrimaryKeyName] = primaryKey
+	}
+
+	return attributes{recordName, primaryKey, keys, values}
+}
+
+// ID returns the primary key column's value.
+func (a *attributes) ID() interface{} {
+	return a.values[a.primaryKey.AttributeName()]
 }
 
 // AttributeNames return an array of names for the attributes available on this object.

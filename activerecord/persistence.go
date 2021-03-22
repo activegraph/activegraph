@@ -18,12 +18,23 @@ type InsertOperation struct {
 	ConflictTarget string
 }
 
+type DeleteOperation struct {
+	TableName  string
+	PrimaryKey string
+	Value      interface{}
+}
+
+type Statements interface {
+	BuildInsertStmt(op *InsertOperation) string
+	BuildDeleteStmt(op *DeleteOperation) string
+}
+
 type Conn interface {
 	//BeginTransaction(ctx context.Context) error
 	//CommitTransaction(ctx context.Context) error
 	//RollbackTransaction(ctx context.Context) error
 
-	BuildInsertStmt(op *InsertOperation) string
+	Statements
 
 	ExecInsert(ctx context.Context, sql string, args ...interface{}) error
 	// ExecDelete(ctx context.Context, sql string, args ...interface{}) error

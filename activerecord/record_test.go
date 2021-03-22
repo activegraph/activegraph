@@ -11,8 +11,8 @@ import (
 func TestActiveRecord_Insert(t *testing.T) {
 	schema := activerecord.New(
 		"book",
-		activerecord.Attr("title", activerecord.String),
-		activerecord.Attr("pages", activerecord.Int),
+		activerecord.StringAttr{Name: "title"},
+		activerecord.IntAttr{Name: "pages"},
 	)
 
 	schema.Connect(sqlite3.Open())
@@ -20,6 +20,8 @@ func TestActiveRecord_Insert(t *testing.T) {
 	book := schema.New(map[string]interface{}{
 		"title": "Moby Dick", "pages": 146,
 	})
+
+	t.Logf("id is %v", book.ID())
 
 	if !book.HasAttribute("title") {
 		t.Fatal("expected attribute 'title'")

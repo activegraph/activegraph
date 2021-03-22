@@ -54,7 +54,13 @@ func (r *ActiveRecord) Update(ctx context.Context) (*ActiveRecord, error) {
 }
 
 func (r *ActiveRecord) Delete(ctx context.Context) error {
-	return nil
+	op := DeleteOperation{
+		TableName:  r.recordName + "s",
+		PrimaryKey: r.primaryKey.AttributeName(),
+		Value:      r.values[r.primaryKey.AttributeName()],
+	}
+
+	return r.conn.ExecInsert(ctx, r.conn.BuildDeleteStmt(&op))
 }
 
 func (r *ActiveRecord) IsPersisted() bool {
@@ -71,6 +77,12 @@ func New(name string, attrs ...Attribute) *Schema {
 	return &Schema{name: name, attrs: attrs}
 }
 
+// PrimaryKey returns the attribute name of the record's primary key.
+func (r *Schema) PrimaryKey() string {
+	attrs := newAttributes(r.name, r.attrs, nil)
+	return attrs.primaryKey.AttributeName()
+}
+
 func (r *Schema) Connect(conn Conn) *Schema {
 	r.conn = conn
 	return r
@@ -82,4 +94,8 @@ func (r *Schema) New(params map[string]interface{}) *ActiveRecord {
 		conn:       r.conn,
 		attributes: newAttributes(r.name, r.attrs, params),
 	}
+}
+
+func (r *Schema) All(ctx context.Context) ([]ActiveRecord, error) {
+	return nil, nil
 }
