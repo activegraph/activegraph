@@ -27,14 +27,6 @@ func (r *ActiveRecord) Validate() error {
 	return nil
 }
 
-func (r *ActiveRecord) Move(dst interface{}) error {
-	return nil
-}
-
-func (r *ActiveRecord) Borrow(src interface{}) error {
-	return nil
-}
-
 func (r *ActiveRecord) Insert(ctx context.Context) (*ActiveRecord, error) {
 	op := InsertOperation{
 		// TODO: specify plural name of a record table.
@@ -42,7 +34,12 @@ func (r *ActiveRecord) Insert(ctx context.Context) (*ActiveRecord, error) {
 		Values:    r.values,
 	}
 
-	err := r.conn.ExecInsert(ctx, r.conn.BuildInsertStmt(&op))
+	id, err := r.conn.ExecInsert(ctx, &op)
+	if err != nil {
+		return nil, err
+	}
+
+	err = r.AssignAttribute(r.primaryKey.AttributeName(), id)
 	if err != nil {
 		return nil, err
 	}
@@ -60,7 +57,7 @@ func (r *ActiveRecord) Delete(ctx context.Context) error {
 		Value:      r.values[r.primaryKey.AttributeName()],
 	}
 
-	return r.conn.ExecInsert(ctx, r.conn.BuildDeleteStmt(&op))
+	return r.conn.ExecDelete(ctx, &op)
 }
 
 func (r *ActiveRecord) IsPersisted() bool {

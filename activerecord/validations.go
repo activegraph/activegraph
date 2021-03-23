@@ -12,7 +12,7 @@ type ErrInvalidValue struct {
 }
 
 func (e *ErrInvalidValue) Error() string {
-	return fmt.Sprintf("invalid value %q for %s type", e.Value, e.TypeName)
+	return fmt.Sprintf("invalid value '%v' for %s type", e.Value, e.TypeName)
 }
 
 type Validator interface {
@@ -26,13 +26,20 @@ type IntValidators []IntValidator
 func ValidatesInt(vv ...IntValidator) IntValidators { return vv }
 
 func (vv IntValidators) Validate(v interface{}) error {
-	val, ok := v.(int)
-	if !ok {
+	var intval int
+	switch v := v.(type) {
+	case int:
+		intval = v
+	case int32:
+		intval = int(v)
+	case int64:
+		intval = int(v)
+	default:
 		return &ErrInvalidValue{TypeName: Int, Value: v}
 	}
 
 	for i := 0; i < len(vv); i++ {
-		if err := vv[i](val); err != nil {
+		if err := vv[i](intval); err != nil {
 			return err
 		}
 	}
@@ -60,7 +67,7 @@ func ValidatesString(vv ...StringValidator) StringValidators { return vv }
 func (vv StringValidators) Validate(v interface{}) error {
 	val, ok := v.(string)
 	if !ok {
-		return &ErrInvalidValue{TypeName: Int, Value: v}
+		return &ErrInvalidValue{TypeName: String, Value: v}
 	}
 
 	for i := 0; i < len(vv); i++ {

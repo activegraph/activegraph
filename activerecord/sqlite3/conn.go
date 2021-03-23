@@ -16,18 +16,28 @@ type Conn struct {
 	db *sql.DB
 }
 
-func Open() *Conn {
-	db, err := sql.Open("sqlite3", ":memory:")
-	// TODO: remove this.
-	db.ExecContext(context.TODO(), `CREATE TABLE books (pages integer, title varchar);`)
-
+func Open(dataSourceName string) (*Conn, error) {
+	db, err := sql.Open("sqlite3", dataSourceName)
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
-	return &Conn{db: db}
+	return &Conn{db: db}, nil
 }
 
-func (c *Conn) BuildInsertStmt(op *activerecord.InsertOperation) string {
+func (c *Conn) Exec(ctx context.Context, sql string, args ...interface{}) error {
+	_, err := c.db.ExecContext(ctx, sql, args...)
+	return err
+}
+
+func (c *Conn) ExecDelete(ctx context.Context, op *activerecord.DeleteOperation) error {
+	const stmt = `DELETE FROM "%s" WHERE "%s" = '%v'`
+	sql := fmt.Sprintf(stmt, op.TableName, op.PrimaryKey, op.Value)
+
+	_, err := c.db.ExecContext(ctx, sql)
+	return err
+}
+
+func (c *Conn) buildInsertStmt(op *activerecord.InsertOperation) string {
 	var (
 		colBuf strings.Builder
 		valBuf strings.Builder
@@ -44,28 +54,25 @@ func (c *Conn) BuildInsertStmt(op *activerecord.InsertOperation) string {
 		colPos++
 	}
 
-	const stmt = `INSERT INTO "%s" (%s) VALUES (%s);`
+	const stmt = `INSERT INTO "%s" (%s) VALUES (%s)`
 	return fmt.Sprintf(stmt, op.TableName, colBuf.String(), valBuf.String())
 }
 
-func (c *Conn) BuildDeleteStmt(op *activerecord.DeleteOperation) string {
-	const stmt = `DELETE FROM "%s" WHERE "%s" = '%v'`
-	return fmt.Sprint(stmt, op.TableName, op.PrimaryKey, op.Value)
-}
-
-func (c *Conn) ExecInsert(ctx context.Context, sql string, args ...interface{}) error {
-	fmt.Println(sql)
-	result, err := c.db.ExecContext(ctx, sql)
+func (c *Conn) ExecInsert(ctx context.Context, op *activerecord.InsertOperation) (
+	id interface{}, err error,
+) {
+	result, err := c.db.ExecContext(ctx, c.buildInsertStmt(op))
 	if err != nil {
-		return err
+		return 0, err
 	}
 
 	rows, err := result.RowsAffected()
 	if err != nil {
-		return err
+		return 0, err
 	}
 	if rows != 1 {
-		return errors.Errorf("expected single row affected, got %d rows affected", rows)
+		return 0, errors.Errorf("expected single row affected, got %d rows affected", rows)
 	}
-	return nil
+
+	return result.LastInsertId()
 }

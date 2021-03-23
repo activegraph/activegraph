@@ -4,31 +4,40 @@ import (
 	"context"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/activegraph/activegraph/activerecord"
 	"github.com/activegraph/activegraph/activerecord/sqlite3"
 )
 
 func TestActiveRecord_Insert(t *testing.T) {
-	schema := activerecord.New(
+	conn, err := sqlite3.Open(":memory:")
+	require.NoError(t, err)
+
+	Book := activerecord.New(
 		"book",
+		activerecord.PrimaryKey{activerecord.IntAttr{Name: "uid"}},
 		activerecord.StringAttr{Name: "title"},
 		activerecord.IntAttr{Name: "pages"},
 	)
 
-	schema.Connect(sqlite3.Open())
+	Book.Connect(conn)
 
-	book := schema.New(map[string]interface{}{
+	book := Book.New(map[string]interface{}{
 		"title": "Moby Dick", "pages": 146,
 	})
-
-	t.Logf("id is %v", book.ID())
 
 	if !book.HasAttribute("title") {
 		t.Fatal("expected attribute 'title'")
 	}
 
-	_, err := book.Insert(context.TODO())
-	if err != nil {
-		t.Fatalf("%s", err)
-	}
+	err = conn.Exec(context.TODO(), "CREATE TABLE books (uid integer not null primary key, pages integer, title varchar);")
+	require.NoError(t, err)
+
+	book, err = book.Insert(context.TODO())
+	require.NoError(t, err)
+	t.Logf("ID is %v", book.ID())
+
+	err = book.Delete(context.TODO())
+	require.NoError(t, err)
 }
