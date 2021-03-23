@@ -64,28 +64,54 @@ func (r *ActiveRecord) IsPersisted() bool {
 	return false
 }
 
-type Schema struct {
+type R struct {
+	primaryKey string
+	attrs      []Attribute
+}
+
+func (r *R) PrimaryKey(name string) {
+	r.primaryKey = name
+}
+
+func (r *R) AttrInt(name string, validates ...IntValidator) {
+	r.attrs = append(r.attrs, IntAttr{Name: name, Validates: validates})
+}
+
+func (r *R) AttrString(name string, validates ...StringValidator) {
+	r.attrs = append(r.attrs, StringAttr{Name: name, Validates: validates})
+}
+
+func (d *R) BelongsTo(name string) {
+}
+
+func (d *R) HasMany(name string) {
+}
+
+type ModelSchema struct {
 	name  string
 	conn  Conn
 	attrs []Attribute
 }
 
-func New(name string, attrs ...Attribute) *Schema {
-	return &Schema{name: name, attrs: attrs}
+func New(name string, defineRecord func(*R)) *ModelSchema {
+	var r R
+	defineRecord(&r)
+
+	return &ModelSchema{name: name, attrs: r.attrs}
 }
 
 // PrimaryKey returns the attribute name of the record's primary key.
-func (r *Schema) PrimaryKey() string {
+func (r *ModelSchema) PrimaryKey() string {
 	attrs := newAttributes(r.name, r.attrs, nil)
 	return attrs.primaryKey.AttributeName()
 }
 
-func (r *Schema) Connect(conn Conn) *Schema {
+func (r *ModelSchema) Connect(conn Conn) *ModelSchema {
 	r.conn = conn
 	return r
 }
 
-func (r *Schema) New(params map[string]interface{}) *ActiveRecord {
+func (r *ModelSchema) New(params map[string]interface{}) *ActiveRecord {
 	return &ActiveRecord{
 		new:        true,
 		conn:       r.conn,
@@ -93,6 +119,6 @@ func (r *Schema) New(params map[string]interface{}) *ActiveRecord {
 	}
 }
 
-func (r *Schema) All(ctx context.Context) ([]ActiveRecord, error) {
+func (r *ModelSchema) All(ctx context.Context) ([]ActiveRecord, error) {
 	return nil, nil
 }

@@ -14,12 +14,10 @@ func TestActiveRecord_Insert(t *testing.T) {
 	conn, err := sqlite3.Open(":memory:")
 	require.NoError(t, err)
 
-	Book := activerecord.New(
-		"book",
-		activerecord.PrimaryKey{activerecord.IntAttr{Name: "uid"}},
-		activerecord.StringAttr{Name: "title"},
-		activerecord.IntAttr{Name: "pages"},
-	)
+	Book := activerecord.New("book", func(r *activerecord.R) {
+		r.AttrString("title")
+		r.AttrInt("pages")
+	})
 
 	Book.Connect(conn)
 
@@ -31,7 +29,7 @@ func TestActiveRecord_Insert(t *testing.T) {
 		t.Fatal("expected attribute 'title'")
 	}
 
-	err = conn.Exec(context.TODO(), "CREATE TABLE books (uid integer not null primary key, pages integer, title varchar);")
+	err = conn.Exec(context.TODO(), "CREATE TABLE books (id integer not null primary key, pages integer, title varchar);")
 	require.NoError(t, err)
 
 	book, err = book.Insert(context.TODO())
