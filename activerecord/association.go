@@ -12,6 +12,14 @@ func (a *BelongsToAssoc) AssociationName() string {
 	return a.Name
 }
 
+type HasManyAssoc struct {
+	Name string
+}
+
+func (a *HasManyAssoc) AssociationName() string {
+	return a.Name
+}
+
 type associations struct {
 }
 

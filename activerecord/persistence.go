@@ -25,10 +25,9 @@ type DeleteOperation struct {
 }
 
 type QueryOperation struct {
-	TableName  string
-	PrimaryKey string
-	Value      interface{}
-	Columns    []string
+	TableName string
+	Columns   []string
+	Values    map[string]interface{}
 }
 
 type Conn interface {
@@ -38,5 +37,5 @@ type Conn interface {
 
 	ExecInsert(ctx context.Context, op *InsertOperation) (id interface{}, err error)
 	ExecDelete(ctx context.Context, op *DeleteOperation) (err error)
-	ExecQuery(ctx context.Context, op *QueryOperation) (cols map[string]interface{}, err error)
+	ExecQuery(ctx context.Context, op *QueryOperation) (rows []map[string]interface{}, err error)
 }

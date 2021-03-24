@@ -6,6 +6,15 @@ import (
 	"strings"
 )
 
+type ErrRecordNotFound struct {
+	PrimaryKey string
+	ID         interface{}
+}
+
+func (e *ErrRecordNotFound) Error() string {
+	return fmt.Sprintf("record not found by %s = %v", e.PrimaryKey, e.ID)
+}
+
 type ActiveRecord struct {
 	name       string
 	conn       Conn
@@ -56,8 +65,8 @@ func (r *ActiveRecord) Association(assocName string) (*ActiveRecord, error) {
 	return model.Find(context.TODO(), assocId)
 }
 
-func (r *ActiveRecord) Collection(assocName string) ([]*ActiveRecord, error) {
-	return nil, nil
+func (r *ActiveRecord) Collection(assocName string) (*Relation, error) {
+	return r.reflection.Reflection(assocName)
 }
 
 func (r *ActiveRecord) Insert(ctx context.Context) (*ActiveRecord, error) {
@@ -143,14 +152,14 @@ func (r *R) BelongsTo(name string) {
 func (r *R) HasMany(name string) {
 }
 
-type ModelSchema struct {
+type Relation struct {
 	name       string
 	conn       Conn
 	attrs      attributesMap
 	reflection *Reflection
 }
 
-func New(name string, defineRecord func(*R)) *ModelSchema {
+func New(name string, defineRecord func(*R)) *Relation {
 	schema, err := Create(name, defineRecord)
 	if err != nil {
 		panic(err)
@@ -158,7 +167,7 @@ func New(name string, defineRecord func(*R)) *ModelSchema {
 	return schema
 }
 
-func Create(name string, defineRecord func(*R)) (*ModelSchema, error) {
+func Create(name string, defineRecord func(*R)) (*Relation, error) {
 	r := R{
 		assocs:     make(map[string]Association),
 		attrs:      make(attributesMap),
@@ -178,60 +187,93 @@ func Create(name string, defineRecord func(*R)) (*ModelSchema, error) {
 	}
 
 	// Create the model schema, and register it within a reflection instance.
-	model := &ModelSchema{name: name, attrs: r.attrs, reflection: r.reflection}
+	model := &Relation{name: name, attrs: r.attrs, reflection: r.reflection}
 	r.reflection.AddReflection(name, model)
 
 	return model, nil
 }
 
 // PrimaryKey returns the attribute name of the record's primary key.
-func (ms *ModelSchema) PrimaryKey() string {
-	attrs, _ := newAttributes(ms.name, ms.attrs.Copy(), nil)
+func (rel *Relation) PrimaryKey() string {
+	attrs, _ := newAttributes(rel.name, rel.attrs.Copy(), nil)
 	return attrs.primaryKey.AttributeName()
 }
 
-func (ms *ModelSchema) Connect(conn Conn) *ModelSchema {
-	ms.conn = conn
-	return ms
+func (rel *Relation) Copy() *Relation {
+	return rel
 }
 
-func (ms *ModelSchema) New(params map[string]interface{}) *ActiveRecord {
-	rec, err := ms.Create(params)
+func (rel *Relation) Connect(conn Conn) *Relation {
+	rel.conn = conn
+	return rel
+}
+
+func (rel *Relation) New(params map[string]interface{}) *ActiveRecord {
+	rec, err := rel.Create(params)
 	if err != nil {
 		panic(err)
 	}
 	return rec
 }
 
-func (ms *ModelSchema) Create(params map[string]interface{}) (*ActiveRecord, error) {
-	attributes, err := newAttributes(ms.name, ms.attrs.Copy(), params)
+func (rel *Relation) Create(params map[string]interface{}) (*ActiveRecord, error) {
+	attributes, err := newAttributes(rel.name, rel.attrs.Copy(), params)
 	if err != nil {
 		return nil, err
 	}
 	return &ActiveRecord{
-		name:       ms.name,
-		conn:       ms.conn,
+		name:       rel.name,
+		conn:       rel.conn,
 		attributes: attributes,
-		reflection: ms.reflection,
+		reflection: rel.reflection,
 	}, nil
 }
 
-func (ms *ModelSchema) Find(ctx context.Context, id interface{}) (*ActiveRecord, error) {
-	attrs, err := newAttributes(ms.name, ms.attrs.Copy(), nil)
+func (rel *Relation) All(ctx context.Context) ([]*ActiveRecord, error) {
+	attrs, err := newAttributes(rel.name, rel.attrs.Copy(), nil)
 	if err != nil {
 		return nil, err
 	}
 
 	op := QueryOperation{
-		TableName:  ms.name + "s",
-		PrimaryKey: attrs.PrimaryKey(),
-		Value:      id,
-		Columns:    attrs.AttributeNames(),
+		TableName: rel.name + "s",
+		Columns:   attrs.AttributeNames(),
 	}
-	cols, err := ms.conn.ExecQuery(ctx, &op)
+
+	rows, err := rel.conn.ExecQuery(ctx, &op)
 	if err != nil {
 		return nil, err
 	}
 
-	return ms.Create(cols)
+	rr := make([]*ActiveRecord, 0, len(rows))
+	for i := range rows {
+		rec, err := rel.Create(rows[i])
+		if err != nil {
+			return nil, err
+		}
+		rr = append(rr, rec)
+	}
+	return rr, nil
+}
+
+func (rel *Relation) Find(ctx context.Context, id interface{}) (*ActiveRecord, error) {
+	attrs, err := newAttributes(rel.name, rel.attrs.Copy(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	op := QueryOperation{
+		TableName: rel.name + "s",
+		Columns:   attrs.AttributeNames(),
+		Values:    map[string]interface{}{attrs.PrimaryKey(): id},
+	}
+	rows, err := rel.conn.ExecQuery(ctx, &op)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(rows) != 1 {
+		return nil, &ErrRecordNotFound{PrimaryKey: attrs.PrimaryKey(), ID: id}
+	}
+	return rel.Create(rows[0])
 }

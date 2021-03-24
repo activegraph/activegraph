@@ -59,7 +59,7 @@ func TestActiveRecord_Insert(t *testing.T) {
 	require.NoError(t, err)
 	t.Logf("%s", author)
 
-	_, err = author2.Insert(context.TODO())
+	author2, err = author2.Insert(context.TODO())
 	require.NoError(t, err)
 	t.Logf("%s", author2)
 
@@ -69,8 +69,11 @@ func TestActiveRecord_Insert(t *testing.T) {
 
 	author, err = book.Association("author")
 	require.NoError(t, err)
-
 	t.Logf("%s", author)
+
+	authors, err := Author.All(context.TODO())
+	require.NoError(t, err)
+	t.Log(authors)
 
 	err = book.Delete(context.TODO())
 	require.NoError(t, err)
