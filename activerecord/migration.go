@@ -1,22 +1,22 @@
 package activerecord
 
-type TableDefinition struct {
+type Table struct {
 	name string
 }
 
-func (d *TableDefinition) Column(name string) {
+func (t *Table) Column(name string) {
 }
 
 // Int adds a new int column to the named table.
-func (d *TableDefinition) Int(name string) {
+func (t *Table) Int(name string) {
 }
 
 // String adds a new string column to the named table
-func (d *TableDefinition) String(name string) {
+func (t *Table) String(name string) {
 }
 
-type Migration struct {
+type M struct {
 }
 
-func (m *Migration) CreateTable(name string, fn func(TableDefinition)) {
+func (m *M) CreateTable(name string, fn func(*Table)) {
 }

@@ -61,6 +61,7 @@ func (c *Conn) buildInsertStmt(op *activerecord.InsertOperation) string {
 func (c *Conn) ExecInsert(ctx context.Context, op *activerecord.InsertOperation) (
 	id interface{}, err error,
 ) {
+	fmt.Println(c.buildInsertStmt(op))
 	result, err := c.db.ExecContext(ctx, c.buildInsertStmt(op))
 	if err != nil {
 		return 0, err
@@ -75,4 +76,37 @@ func (c *Conn) ExecInsert(ctx context.Context, op *activerecord.InsertOperation)
 	}
 
 	return result.LastInsertId()
+}
+
+func (c *Conn) ExecQuery(ctx context.Context, op *activerecord.QueryOperation) (
+	cols map[string]interface{}, err error,
+) {
+	const stmt = `SELECT %s FROM "%s" WHERE "%s" = '%v'`
+	sql := fmt.Sprintf(stmt, strings.Join(op.Columns, ", "), op.TableName, op.PrimaryKey, op.Value)
+
+	rows, err := c.db.QueryContext(ctx, sql)
+	if err != nil {
+		return nil, err
+	}
+
+	defer rows.Close()
+
+	cols = make(map[string]interface{})
+
+	for rows.Next() {
+		vals := make([]interface{}, len(op.Columns))
+		for i := range vals {
+			vals[i] = new(interface{})
+		}
+
+		if err = rows.Scan(vals...); err != nil {
+			return nil, err
+		}
+
+		for i := range vals {
+			cols[op.Columns[i]] = *(vals[i]).(*interface{})
+		}
+	}
+
+	return cols, nil
 }

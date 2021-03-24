@@ -24,6 +24,13 @@ type DeleteOperation struct {
 	Value      interface{}
 }
 
+type QueryOperation struct {
+	TableName  string
+	PrimaryKey string
+	Value      interface{}
+	Columns    []string
+}
+
 type Conn interface {
 	//BeginTransaction(ctx context.Context) error
 	//CommitTransaction(ctx context.Context) error
@@ -31,4 +38,5 @@ type Conn interface {
 
 	ExecInsert(ctx context.Context, op *InsertOperation) (id interface{}, err error)
 	ExecDelete(ctx context.Context, op *DeleteOperation) (err error)
+	ExecQuery(ctx context.Context, op *QueryOperation) (cols map[string]interface{}, err error)
 }

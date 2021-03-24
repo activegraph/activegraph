@@ -2,6 +2,9 @@ package activerecord
 
 import (
 	"fmt"
+	"sort"
+
+	"github.com/pkg/errors"
 )
 
 const (
@@ -48,10 +51,6 @@ func (a StringAttr) AttributeName() string            { return a.Name }
 func (a StringAttr) CastType() string                 { return String }
 func (a StringAttr) Validate(value interface{}) error { return a.Validates.Validate(value) }
 
-type UidAttr struct {
-	StringAttr
-}
-
 // ErrUnknownAttribute is returned on attempt to assign unknown attribute to the
 // ActiveRecord.
 type ErrUnknownAttribute struct {
@@ -69,6 +68,16 @@ const (
 	defaultPrimaryKeyName = "id"
 )
 
+type attributesMap map[string]Attribute
+
+func (m attributesMap) Copy() attributesMap {
+	mm := make(attributesMap, len(m))
+	for name, attr := range m {
+		mm[name] = attr
+	}
+	return mm
+}
+
 // attributes of the ActiveRecord.
 type attributes struct {
 	recordName string
@@ -79,24 +88,22 @@ type attributes struct {
 
 // newAttributes creates a new collection of attributes for the specified record.
 func newAttributes(
-	recordName string, attrs []Attribute, values map[string]interface{},
-) attributes {
+	recordName string, attrs map[string]Attribute, values map[string]interface{},
+) (attributes, error) {
 
 	recordAttrs := attributes{
 		recordName: recordName,
-		keys:       make(map[string]Attribute, len(attrs)),
+		keys:       attrs,
 		values:     values,
 	}
-	for i := range attrs {
-		recordAttrs.keys[attrs[i].AttributeName()] = attrs[i]
-
+	for _, attr := range recordAttrs.keys {
 		// Save the primary key attribute as a standalone property for
 		// easier access to it.
-		if pk, ok := attrs[i].(primaryKey); ok && pk.PrimaryKey() {
+		if pk, ok := attr.(primaryKey); ok && pk.PrimaryKey() {
 			if recordAttrs.primaryKey != nil {
-				panic("multiple primary keys are not allowed")
+				return attributes{}, errors.New("multiple primary keys are not supported")
 			}
-			recordAttrs.primaryKey = attrs[i]
+			recordAttrs.primaryKey = attr
 		}
 	}
 
@@ -104,7 +111,8 @@ func newAttributes(
 	// a new "id" integer attribute, ensure that the attribute with the same
 	// name is not presented in the schema definition.
 	if _, dup := recordAttrs.keys[defaultPrimaryKeyName]; dup {
-		panic(fmt.Sprintf("%q is an attribute, but not a primary key", defaultPrimaryKeyName))
+		err := errors.Errorf("%q is an attribute, but not a primary key", defaultPrimaryKeyName)
+		return attributes{}, err
 	}
 	if recordAttrs.primaryKey == nil {
 		pk := PrimaryKey{Attribute: IntAttr{Name: defaultPrimaryKeyName}}
@@ -112,7 +120,11 @@ func newAttributes(
 		recordAttrs.keys[defaultPrimaryKeyName] = pk
 	}
 
-	return recordAttrs
+	return recordAttrs, nil
+}
+
+func (a *attributes) PrimaryKey() string {
+	return a.primaryKey.AttributeName()
 }
 
 // ID returns the primary key column's value.
@@ -126,6 +138,7 @@ func (a *attributes) AttributeNames() []string {
 	for name := range a.keys {
 		names = append(names, name)
 	}
+	sort.StringSlice(names).Sort()
 	return names
 }
 
