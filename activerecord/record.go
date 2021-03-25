@@ -18,9 +18,28 @@ func (e *ErrRecordNotFound) Error() string {
 type ActiveRecord struct {
 	name       string
 	conn       Conn
+	ctx        context.Context
 	reflection *Reflection
 
 	attributes
+}
+
+func (r *ActiveRecord) Copy() *ActiveRecord {
+	// TODO: implement a shallow copy of the active record.
+	return r
+}
+
+func (r *ActiveRecord) Context() context.Context {
+	if r.ctx == nil {
+		return context.Background()
+	}
+	return r.ctx
+}
+
+func (r *ActiveRecord) WithContext(ctx context.Context) *ActiveRecord {
+	rCopy := r.Copy()
+	rCopy.ctx = ctx
+	return rCopy
 }
 
 func (r *ActiveRecord) String() string {
@@ -56,27 +75,27 @@ func (r *ActiveRecord) Validate() error {
 }
 
 func (r *ActiveRecord) Association(assocName string) (*ActiveRecord, error) {
-	model, err := r.reflection.Reflection(assocName)
+	rel, err := r.reflection.Reflection(assocName)
 	if err != nil {
 		return nil, err
 	}
 
 	assocId := r.AccessAttribute(assocName + "_id")
-	return model.Find(context.TODO(), assocId)
+	return rel.WithContext(r.Context()).Find(assocId)
 }
 
 func (r *ActiveRecord) Collection(assocName string) (*Relation, error) {
 	return r.reflection.Reflection(assocName)
 }
 
-func (r *ActiveRecord) Insert(ctx context.Context) (*ActiveRecord, error) {
+func (r *ActiveRecord) Insert() (*ActiveRecord, error) {
 	op := InsertOperation{
 		// TODO: specify plural name of a record table.
 		TableName: r.recordName + "s",
 		Values:    r.values,
 	}
 
-	id, err := r.conn.ExecInsert(ctx, &op)
+	id, err := r.conn.ExecInsert(r.Context(), &op)
 	if err != nil {
 		return nil, err
 	}
@@ -88,18 +107,18 @@ func (r *ActiveRecord) Insert(ctx context.Context) (*ActiveRecord, error) {
 	return r, nil
 }
 
-func (r *ActiveRecord) Update(ctx context.Context) (*ActiveRecord, error) {
+func (r *ActiveRecord) Update() (*ActiveRecord, error) {
 	return nil, nil
 }
 
-func (r *ActiveRecord) Delete(ctx context.Context) error {
+func (r *ActiveRecord) Delete() error {
 	op := DeleteOperation{
 		TableName:  r.recordName + "s",
 		PrimaryKey: r.primaryKey.AttributeName(),
 		Value:      r.ID(),
 	}
 
-	return r.conn.ExecDelete(ctx, &op)
+	return r.conn.ExecDelete(r.Context(), &op)
 }
 
 func (r *ActiveRecord) IsPersisted() bool {
@@ -157,6 +176,8 @@ type Relation struct {
 	conn       Conn
 	attrs      attributesMap
 	reflection *Reflection
+
+	ctx context.Context
 }
 
 func New(name string, defineRecord func(*R)) *Relation {
@@ -193,14 +214,22 @@ func Create(name string, defineRecord func(*R)) (*Relation, error) {
 	return model, nil
 }
 
-// PrimaryKey returns the attribute name of the record's primary key.
-func (rel *Relation) PrimaryKey() string {
-	attrs, _ := newAttributes(rel.name, rel.attrs.Copy(), nil)
-	return attrs.primaryKey.AttributeName()
+func (rel *Relation) Copy() *Relation {
+	// TODO: implement at least shallow copy of the relation.
+	return rel
 }
 
-func (rel *Relation) Copy() *Relation {
-	return rel
+func (rel *Relation) Context() context.Context {
+	if rel.ctx == nil {
+		return context.Background()
+	}
+	return rel.ctx
+}
+
+func (rel *Relation) WithContext(ctx context.Context) *Relation {
+	relCopy := rel.Copy()
+	relCopy.ctx = ctx
+	return relCopy
 }
 
 func (rel *Relation) Connect(conn Conn) *Relation {
@@ -216,6 +245,12 @@ func (rel *Relation) New(params map[string]interface{}) *ActiveRecord {
 	return rec
 }
 
+// PrimaryKey returns the attribute name of the record's primary key.
+func (rel *Relation) PrimaryKey() string {
+	attrs, _ := newAttributes(rel.name, rel.attrs.Copy(), nil)
+	return attrs.primaryKey.AttributeName()
+}
+
 func (rel *Relation) Create(params map[string]interface{}) (*ActiveRecord, error) {
 	attributes, err := newAttributes(rel.name, rel.attrs.Copy(), params)
 	if err != nil {
@@ -229,7 +264,7 @@ func (rel *Relation) Create(params map[string]interface{}) (*ActiveRecord, error
 	}, nil
 }
 
-func (rel *Relation) All(ctx context.Context) ([]*ActiveRecord, error) {
+func (rel *Relation) All() ([]*ActiveRecord, error) {
 	attrs, err := newAttributes(rel.name, rel.attrs.Copy(), nil)
 	if err != nil {
 		return nil, err
@@ -240,7 +275,7 @@ func (rel *Relation) All(ctx context.Context) ([]*ActiveRecord, error) {
 		Columns:   attrs.AttributeNames(),
 	}
 
-	rows, err := rel.conn.ExecQuery(ctx, &op)
+	rows, err := rel.conn.ExecQuery(rel.Context(), &op)
 	if err != nil {
 		return nil, err
 	}
@@ -256,7 +291,7 @@ func (rel *Relation) All(ctx context.Context) ([]*ActiveRecord, error) {
 	return rr, nil
 }
 
-func (rel *Relation) Find(ctx context.Context, id interface{}) (*ActiveRecord, error) {
+func (rel *Relation) Find(id interface{}) (*ActiveRecord, error) {
 	attrs, err := newAttributes(rel.name, rel.attrs.Copy(), nil)
 	if err != nil {
 		return nil, err
@@ -267,7 +302,7 @@ func (rel *Relation) Find(ctx context.Context, id interface{}) (*ActiveRecord, e
 		Columns:   attrs.AttributeNames(),
 		Values:    map[string]interface{}{attrs.PrimaryKey(): id},
 	}
-	rows, err := rel.conn.ExecQuery(ctx, &op)
+	rows, err := rel.conn.ExecQuery(rel.Context(), &op)
 	if err != nil {
 		return nil, err
 	}
