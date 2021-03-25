@@ -120,7 +120,23 @@ func newAttributes(
 		recordAttrs.keys[defaultPrimaryKeyName] = pk
 	}
 
+	// Enforce values within a record, all of them must be
+	// presented in the specified list of attributes.
+	for attrName := range recordAttrs.values {
+		if _, ok := recordAttrs.keys[attrName]; !ok {
+
+			err := &ErrUnknownAttribute{RecordName: recordName, Attr: attrName}
+			return attributes{}, err
+		}
+	}
+
 	return recordAttrs, nil
+}
+
+func (a *attributes) forEach(fn func(name string, value interface{})) {
+	for name, value := range a.values {
+		fn(name, value)
+	}
 }
 
 func (a *attributes) PrimaryKey() string {

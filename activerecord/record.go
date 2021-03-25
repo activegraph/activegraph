@@ -85,7 +85,17 @@ func (r *ActiveRecord) Association(assocName string) (*ActiveRecord, error) {
 }
 
 func (r *ActiveRecord) Collection(assocName string) (*Relation, error) {
-	return r.reflection.Reflection(assocName)
+	rel, err := r.reflection.Reflection(assocName)
+	if err != nil {
+		return nil, err
+	}
+
+	rel = rel.Copy()
+	err = rel.scope.AssignAttribute(r.name+"_id", r.ID())
+	if err != nil {
+		return nil, err
+	}
+	return rel, nil
 }
 
 func (r *ActiveRecord) Insert() (*ActiveRecord, error) {
@@ -136,7 +146,7 @@ func (e *ErrUnknownPrimaryKey) Error() string {
 
 type R struct {
 	primaryKey string
-	attrs      map[string]Attribute
+	attrs      attributesMap
 	assocs     map[string]Association
 	reflection *Reflection
 }
@@ -164,16 +174,18 @@ func (r *R) Scope(reflection *Reflection) {
 }
 
 func (r *R) BelongsTo(name string) {
-	r.attrs[name+"_id"] = StringAttr{Name: name + "_id", Validates: StringValidators(nil)}
+	r.attrs[name+"_id"] = IntAttr{Name: name + "_id", Validates: IntValidators(nil)}
 	r.assocs[name] = &BelongsToAssoc{Name: name}
 }
 
 func (r *R) HasMany(name string) {
+	r.assocs[name] = &HasManyAssoc{Name: name}
 }
 
 type Relation struct {
 	name       string
 	conn       Conn
+	scope      *attributes
 	attrs      attributesMap
 	reflection *Reflection
 
@@ -207,11 +219,22 @@ func Create(name string, defineRecord func(*R)) (*Relation, error) {
 		r.attrs[r.primaryKey] = PrimaryKey{Attribute: attr}
 	}
 
-	// Create the model schema, and register it within a reflection instance.
-	model := &Relation{name: name, attrs: r.attrs, reflection: r.reflection}
-	r.reflection.AddReflection(name, model)
+	// The scope is empty by default.
+	scope, err := newAttributes(name, r.attrs.Copy(), make(map[string]interface{}))
+	if err != nil {
+		return nil, err
+	}
 
-	return model, nil
+	// Create the model schema, and register it within a reflection instance.
+	rel := &Relation{
+		name:       name,
+		attrs:      r.attrs,
+		scope:      &scope,
+		reflection: r.reflection,
+	}
+	r.reflection.AddReflection(name, rel)
+
+	return rel, nil
 }
 
 func (rel *Relation) Copy() *Relation {
@@ -273,7 +296,15 @@ func (rel *Relation) All() ([]*ActiveRecord, error) {
 	op := QueryOperation{
 		TableName: rel.name + "s",
 		Columns:   attrs.AttributeNames(),
+		Values:    make(map[string]interface{}),
 	}
+
+	// When the scope is configured for the relation, add all attributes
+	// to the list of query operation, so only neccessary subset of records
+	// are returned to the caller.
+	rel.scope.forEach(func(name string, value interface{}) {
+		op.Values[name] = value
+	})
 
 	rows, err := rel.conn.ExecQuery(rel.Context(), &op)
 	if err != nil {
