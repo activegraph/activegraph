@@ -30,9 +30,11 @@ func TestActiveRecord_Insert(t *testing.T) {
 	Author.Connect(conn)
 	Book.Connect(conn)
 
-	author := Author.New(map[string]interface{}{"name": "Herman Melville"})
+	author1 := Author.New(map[string]interface{}{"name": "Herman Melville"})
 	author2 := Author.New(map[string]interface{}{"name": "Noa Harrary"})
-	book := Book.New(map[string]interface{}{"title": "Moby Dick", "pages": 146, "author_id": 1})
+
+	book1 := Book.New(map[string]interface{}{"title": "Moby Dick", "pages": 146, "author_id": 1})
+	book2 := Book.New(map[string]interface{}{"title": "Omoo", "pages": 231, "author_id": 1})
 
 	err = conn.Exec(
 		context.TODO(), `
@@ -43,35 +45,46 @@ func TestActiveRecord_Insert(t *testing.T) {
 			PRIMARY KEY(id)
 		);
 		CREATE TABLE books (
-			id  		INTEGER NOT NULL,
+			uid  		INTEGER NOT NULL,
 			author_id	INTEGER,
 			pages		INTEGER,
 			title		VARCHAR,
 
-			PRIMARY KEY(id)
+			PRIMARY KEY(uid)
 			FOREIGN KEY(author_id) REFERENCES author(id)
 		);
 		`,
 	)
 	require.NoError(t, err)
 
-	author, err = author.Insert(context.TODO())
+	author1, err = author1.Insert()
 	require.NoError(t, err)
-	t.Logf("%s", author)
+	t.Logf("%s", author1)
 
-	_, err = author2.Insert(context.TODO())
+	author2, err = author2.Insert()
 	require.NoError(t, err)
 	t.Logf("%s", author2)
 
-	book, err = book.Insert(context.TODO())
+	book1, err = book1.Insert()
 	require.NoError(t, err)
-	t.Logf("%s", book)
+	t.Logf("%s", book1)
 
-	author, err = book.Association("author")
+	book2, err = book2.Insert()
 	require.NoError(t, err)
+	t.Logf("%s", book2)
 
+	author, err := book1.Association("author")
+	require.NoError(t, err)
 	t.Logf("%s", author)
 
-	err = book.Delete(context.TODO())
+	authors, err := Author.All()
 	require.NoError(t, err)
+	t.Log(authors)
+
+	booksCollection, err := author1.Collection("book")
+	require.NoError(t, err)
+
+	books, err := booksCollection.All()
+	require.NoError(t, err)
+	t.Log(books)
 }

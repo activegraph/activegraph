@@ -9,21 +9,21 @@ var (
 )
 
 type Reflection struct {
-	models map[string]*ModelSchema
+	rels map[string]*Relation
 }
 
 func NewReflection() *Reflection {
-	return &Reflection{models: make(map[string]*ModelSchema)}
+	return &Reflection{rels: make(map[string]*Relation)}
 }
 
-func (r *Reflection) AddReflection(name string, model *ModelSchema) {
-	r.models[name] = model
+func (r *Reflection) AddReflection(name string, rel *Relation) {
+	r.rels[name] = rel
 }
 
-func (r *Reflection) Reflection(name string) (*ModelSchema, error) {
-	model, ok := r.models[name]
+func (r *Reflection) Reflection(name string) (*Relation, error) {
+	rel, ok := r.rels[name]
 	if !ok {
 		return nil, errors.Errorf("unknown reflection %q", name)
 	}
-	return model, nil
+	return rel, nil
 }

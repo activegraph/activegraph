@@ -6,12 +6,40 @@ import (
 	"strings"
 )
 
+type ErrRecordNotFound struct {
+	PrimaryKey string
+	ID         interface{}
+}
+
+func (e *ErrRecordNotFound) Error() string {
+	return fmt.Sprintf("record not found by %s = %v", e.PrimaryKey, e.ID)
+}
+
 type ActiveRecord struct {
 	name       string
 	conn       Conn
+	ctx        context.Context
 	reflection *Reflection
 
 	attributes
+}
+
+func (r *ActiveRecord) Copy() *ActiveRecord {
+	// TODO: implement a shallow copy of the active record.
+	return r
+}
+
+func (r *ActiveRecord) Context() context.Context {
+	if r.ctx == nil {
+		return context.Background()
+	}
+	return r.ctx
+}
+
+func (r *ActiveRecord) WithContext(ctx context.Context) *ActiveRecord {
+	rCopy := r.Copy()
+	rCopy.ctx = ctx
+	return rCopy
 }
 
 func (r *ActiveRecord) String() string {
@@ -47,27 +75,37 @@ func (r *ActiveRecord) Validate() error {
 }
 
 func (r *ActiveRecord) Association(assocName string) (*ActiveRecord, error) {
-	model, err := r.reflection.Reflection(assocName)
+	rel, err := r.reflection.Reflection(assocName)
 	if err != nil {
 		return nil, err
 	}
 
 	assocId := r.AccessAttribute(assocName + "_id")
-	return model.Find(context.TODO(), assocId)
+	return rel.WithContext(r.Context()).Find(assocId)
 }
 
-func (r *ActiveRecord) Collection(assocName string) ([]*ActiveRecord, error) {
-	return nil, nil
+func (r *ActiveRecord) Collection(assocName string) (*Relation, error) {
+	rel, err := r.reflection.Reflection(assocName)
+	if err != nil {
+		return nil, err
+	}
+
+	rel = rel.Copy()
+	err = rel.scope.AssignAttribute(r.name+"_id", r.ID())
+	if err != nil {
+		return nil, err
+	}
+	return rel, nil
 }
 
-func (r *ActiveRecord) Insert(ctx context.Context) (*ActiveRecord, error) {
+func (r *ActiveRecord) Insert() (*ActiveRecord, error) {
 	op := InsertOperation{
 		// TODO: specify plural name of a record table.
 		TableName: r.recordName + "s",
 		Values:    r.values,
 	}
 
-	id, err := r.conn.ExecInsert(ctx, &op)
+	id, err := r.conn.ExecInsert(r.Context(), &op)
 	if err != nil {
 		return nil, err
 	}
@@ -79,18 +117,18 @@ func (r *ActiveRecord) Insert(ctx context.Context) (*ActiveRecord, error) {
 	return r, nil
 }
 
-func (r *ActiveRecord) Update(ctx context.Context) (*ActiveRecord, error) {
+func (r *ActiveRecord) Update() (*ActiveRecord, error) {
 	return nil, nil
 }
 
-func (r *ActiveRecord) Delete(ctx context.Context) error {
+func (r *ActiveRecord) Delete() error {
 	op := DeleteOperation{
 		TableName:  r.recordName + "s",
 		PrimaryKey: r.primaryKey.AttributeName(),
 		Value:      r.ID(),
 	}
 
-	return r.conn.ExecDelete(ctx, &op)
+	return r.conn.ExecDelete(r.Context(), &op)
 }
 
 func (r *ActiveRecord) IsPersisted() bool {
@@ -108,7 +146,7 @@ func (e *ErrUnknownPrimaryKey) Error() string {
 
 type R struct {
 	primaryKey string
-	attrs      map[string]Attribute
+	attrs      attributesMap
 	assocs     map[string]Association
 	reflection *Reflection
 }
@@ -136,21 +174,25 @@ func (r *R) Scope(reflection *Reflection) {
 }
 
 func (r *R) BelongsTo(name string) {
-	r.attrs[name+"_id"] = StringAttr{Name: name + "_id", Validates: StringValidators(nil)}
+	r.attrs[name+"_id"] = IntAttr{Name: name + "_id", Validates: IntValidators(nil)}
 	r.assocs[name] = &BelongsToAssoc{Name: name}
 }
 
 func (r *R) HasMany(name string) {
+	r.assocs[name] = &HasManyAssoc{Name: name}
 }
 
-type ModelSchema struct {
+type Relation struct {
 	name       string
 	conn       Conn
+	scope      *attributes
 	attrs      attributesMap
 	reflection *Reflection
+
+	ctx context.Context
 }
 
-func New(name string, defineRecord func(*R)) *ModelSchema {
+func New(name string, defineRecord func(*R)) *Relation {
 	schema, err := Create(name, defineRecord)
 	if err != nil {
 		panic(err)
@@ -158,7 +200,7 @@ func New(name string, defineRecord func(*R)) *ModelSchema {
 	return schema
 }
 
-func Create(name string, defineRecord func(*R)) (*ModelSchema, error) {
+func Create(name string, defineRecord func(*R)) (*Relation, error) {
 	r := R{
 		assocs:     make(map[string]Association),
 		attrs:      make(attributesMap),
@@ -177,61 +219,127 @@ func Create(name string, defineRecord func(*R)) (*ModelSchema, error) {
 		r.attrs[r.primaryKey] = PrimaryKey{Attribute: attr}
 	}
 
+	// The scope is empty by default.
+	scope, err := newAttributes(name, r.attrs.Copy(), make(map[string]interface{}))
+	if err != nil {
+		return nil, err
+	}
+
 	// Create the model schema, and register it within a reflection instance.
-	model := &ModelSchema{name: name, attrs: r.attrs, reflection: r.reflection}
-	r.reflection.AddReflection(name, model)
+	rel := &Relation{
+		name:       name,
+		attrs:      r.attrs,
+		scope:      &scope,
+		reflection: r.reflection,
+	}
+	r.reflection.AddReflection(name, rel)
 
-	return model, nil
+	return rel, nil
 }
 
-// PrimaryKey returns the attribute name of the record's primary key.
-func (ms *ModelSchema) PrimaryKey() string {
-	attrs, _ := newAttributes(ms.name, ms.attrs.Copy(), nil)
-	return attrs.primaryKey.AttributeName()
+func (rel *Relation) Copy() *Relation {
+	// TODO: implement at least shallow copy of the relation.
+	return rel
 }
 
-func (ms *ModelSchema) Connect(conn Conn) *ModelSchema {
-	ms.conn = conn
-	return ms
+func (rel *Relation) Context() context.Context {
+	if rel.ctx == nil {
+		return context.Background()
+	}
+	return rel.ctx
 }
 
-func (ms *ModelSchema) New(params map[string]interface{}) *ActiveRecord {
-	rec, err := ms.Create(params)
+func (rel *Relation) WithContext(ctx context.Context) *Relation {
+	relCopy := rel.Copy()
+	relCopy.ctx = ctx
+	return relCopy
+}
+
+func (rel *Relation) Connect(conn Conn) *Relation {
+	rel.conn = conn
+	return rel
+}
+
+func (rel *Relation) New(params map[string]interface{}) *ActiveRecord {
+	rec, err := rel.Create(params)
 	if err != nil {
 		panic(err)
 	}
 	return rec
 }
 
-func (ms *ModelSchema) Create(params map[string]interface{}) (*ActiveRecord, error) {
-	attributes, err := newAttributes(ms.name, ms.attrs.Copy(), params)
+// PrimaryKey returns the attribute name of the record's primary key.
+func (rel *Relation) PrimaryKey() string {
+	attrs, _ := newAttributes(rel.name, rel.attrs.Copy(), nil)
+	return attrs.primaryKey.AttributeName()
+}
+
+func (rel *Relation) Create(params map[string]interface{}) (*ActiveRecord, error) {
+	attributes, err := newAttributes(rel.name, rel.attrs.Copy(), params)
 	if err != nil {
 		return nil, err
 	}
 	return &ActiveRecord{
-		name:       ms.name,
-		conn:       ms.conn,
+		name:       rel.name,
+		conn:       rel.conn,
 		attributes: attributes,
-		reflection: ms.reflection,
+		reflection: rel.reflection,
 	}, nil
 }
 
-func (ms *ModelSchema) Find(ctx context.Context, id interface{}) (*ActiveRecord, error) {
-	attrs, err := newAttributes(ms.name, ms.attrs.Copy(), nil)
+func (rel *Relation) All() ([]*ActiveRecord, error) {
+	attrs, err := newAttributes(rel.name, rel.attrs.Copy(), nil)
 	if err != nil {
 		return nil, err
 	}
 
 	op := QueryOperation{
-		TableName:  ms.name + "s",
-		PrimaryKey: attrs.PrimaryKey(),
-		Value:      id,
-		Columns:    attrs.AttributeNames(),
+		TableName: rel.name + "s",
+		Columns:   attrs.AttributeNames(),
+		Values:    make(map[string]interface{}),
 	}
-	cols, err := ms.conn.ExecQuery(ctx, &op)
+
+	// When the scope is configured for the relation, add all attributes
+	// to the list of query operation, so only neccessary subset of records
+	// are returned to the caller.
+	rel.scope.forEach(func(name string, value interface{}) {
+		op.Values[name] = value
+	})
+
+	rows, err := rel.conn.ExecQuery(rel.Context(), &op)
 	if err != nil {
 		return nil, err
 	}
 
-	return ms.Create(cols)
+	rr := make([]*ActiveRecord, 0, len(rows))
+	for i := range rows {
+		rec, err := rel.Create(rows[i])
+		if err != nil {
+			return nil, err
+		}
+		rr = append(rr, rec)
+	}
+	return rr, nil
+}
+
+func (rel *Relation) Find(id interface{}) (*ActiveRecord, error) {
+	attrs, err := newAttributes(rel.name, rel.attrs.Copy(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	op := QueryOperation{
+		TableName: rel.name + "s",
+		Columns:   attrs.AttributeNames(),
+		Values:    map[string]interface{}{attrs.PrimaryKey(): id},
+	}
+	rows, err := rel.conn.ExecQuery(rel.Context(), &op)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(rows) != 1 {
+		return nil, &ErrRecordNotFound{PrimaryKey: attrs.PrimaryKey(), ID: id}
+	}
+	return rel.Create(rows[0])
 }
