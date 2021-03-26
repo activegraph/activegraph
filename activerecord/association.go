@@ -20,6 +20,16 @@ func (a *HasManyAssoc) AssociationName() string {
 	return a.Name
 }
 
+type associationsMap map[string]Association
+
+func (m associationsMap) Copy() associationsMap {
+	mm := make(associationsMap, len(m))
+	for name, assoc := range m {
+		mm[name] = assoc
+	}
+	return mm
+}
+
 type associations struct {
 }
 

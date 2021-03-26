@@ -82,14 +82,18 @@ func (c *Conn) ExecQuery(ctx context.Context, op *activerecord.QueryOperation) (
 	rows []map[string]interface{}, err error,
 ) {
 	var buf strings.Builder
-	fmt.Fprintf(&buf, `SELECT %s FROM "%s" WHERE true `, strings.Join(op.Columns, ", "), op.TableName)
+	fmt.Fprintf(&buf, `SELECT %s FROM "%s" WHERE true`, strings.Join(op.Columns, ", "), op.TableName)
 
 	for col, val := range op.Values {
-		fmt.Fprintf(&buf, `AND "%s" = '%v'`, col, val)
+		fmt.Fprintf(&buf, ` AND "%s" = '%v'`, col, val)
+	}
+
+	for _, pr := range op.Predicates {
+		fmt.Fprintf(&buf, ` AND %s`, pr)
 	}
 
 	fmt.Println(buf.String())
-	rws, err := c.db.QueryContext(ctx, buf.String())
+	rws, err := c.db.QueryContext(ctx, buf.String(), op.Args...)
 	if err != nil {
 		return nil, err
 	}

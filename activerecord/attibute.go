@@ -5,6 +5,8 @@ import (
 	"sort"
 
 	"github.com/pkg/errors"
+
+	"github.com/activegraph/activegraph/internal"
 )
 
 const (
@@ -70,7 +72,7 @@ const (
 
 type attributesMap map[string]Attribute
 
-func (m attributesMap) Copy() attributesMap {
+func (m attributesMap) copy() attributesMap {
 	mm := make(attributesMap, len(m))
 	for name, attr := range m {
 		mm[name] = attr
@@ -82,8 +84,23 @@ func (m attributesMap) Copy() attributesMap {
 type attributes struct {
 	recordName string
 	primaryKey Attribute
-	keys       map[string]Attribute
+	keys       attributesMap
 	values     map[string]interface{}
+}
+
+func (a *attributes) copy() *attributes {
+	return &attributes{
+		recordName: a.recordName,
+		primaryKey: a.primaryKey,
+		keys:       a.keys.copy(),
+		values:     internal.CopyMap(a.values),
+	}
+}
+
+func (a *attributes) clear() *attributes {
+	aCopy := a.copy()
+	aCopy.values = make(map[string]interface{}, len(a.keys))
+	return aCopy
 }
 
 // newAttributes creates a new collection of attributes for the specified record.
@@ -182,6 +199,31 @@ func (a *attributes) AssignAttribute(attrName string, val interface{}) error {
 		a.values = make(map[string]interface{})
 	}
 	a.values[attrName] = val
+	return nil
+}
+
+// AssignAttributes allows to set all the attributes by passing in a map of attributes
+// with keys matching attributet names.
+//
+// The method either assigns all provided attributes, no attributes are assigned
+// in case of error.
+func (a *attributes) AssignAttributes(newAttributes map[string]interface{}) error {
+	// Create a copy of attributes, either update all attributes or
+	// return the object in the previous state.
+	var (
+		keys   = a.keys.copy()
+		values = internal.CopyMap(a.values)
+	)
+
+	for attrName, val := range newAttributes {
+		err := a.AssignAttribute(attrName, val)
+		if err != nil {
+			// Return the original state of the attributes.
+			a.keys = keys
+			a.values = values
+			return err
+		}
+	}
 	return nil
 }
 
