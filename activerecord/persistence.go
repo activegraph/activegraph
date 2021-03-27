@@ -39,5 +39,5 @@ type Conn interface {
 
 	ExecInsert(ctx context.Context, op *InsertOperation) (id interface{}, err error)
 	ExecDelete(ctx context.Context, op *DeleteOperation) (err error)
-	ExecQuery(ctx context.Context, op *QueryOperation) (rows []map[string]interface{}, err error)
+	ExecQuery(ctx context.Context, op *QueryOperation, cb func(Hash) bool) (err error)
 }

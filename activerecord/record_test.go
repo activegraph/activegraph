@@ -94,6 +94,7 @@ func TestActiveRecord_Insert(t *testing.T) {
 	t.Log(bb)
 
 	books = Book.All().Group("author_id", "year").Select("author_id", "year")
+
 	t.Log(books)
 	bb, err = books.ToA()
 	t.Log(bb, err)

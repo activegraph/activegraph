@@ -14,6 +14,8 @@ const (
 	String = "string"
 )
 
+type Hash map[string]interface{}
+
 // primaryKey must implement attributes that are primary keys.
 type primaryKey interface {
 	PrimaryKey() bool
@@ -85,7 +87,7 @@ type attributes struct {
 	recordName string
 	primaryKey Attribute
 	keys       attributesMap
-	values     map[string]interface{}
+	values     Hash
 }
 
 func (a *attributes) copy() *attributes {
@@ -98,15 +100,15 @@ func (a *attributes) copy() *attributes {
 }
 
 func (a *attributes) clear() *attributes {
-	aCopy := a.copy()
-	aCopy.values = make(map[string]interface{}, len(a.keys))
-	return aCopy
+	newa := a.copy()
+	newa.values = make(Hash, len(a.keys))
+	return newa
 }
 
 // newAttributes creates a new collection of attributes for the specified record.
-func newAttributes(
-	recordName string, attrs attributesMap, values map[string]interface{},
-) (*attributes, error) {
+func newAttributes(recordName string, attrs attributesMap, values Hash) (
+	*attributes, error,
+) {
 
 	recordAttrs := attributes{
 		recordName: recordName,
@@ -209,7 +211,7 @@ func (a *attributes) AssignAttribute(attrName string, val interface{}) error {
 	}
 
 	if a.values == nil {
-		a.values = make(map[string]interface{})
+		a.values = make(Hash)
 	}
 	a.values[attrName] = val
 	return nil

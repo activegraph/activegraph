@@ -78,8 +78,10 @@ func (c *Conn) ExecInsert(ctx context.Context, op *activerecord.InsertOperation)
 	return result.LastInsertId()
 }
 
-func (c *Conn) ExecQuery(ctx context.Context, op *activerecord.QueryOperation) (
-	rows []map[string]interface{}, err error,
+func (c *Conn) ExecQuery(
+	ctx context.Context, op *activerecord.QueryOperation, cb func(activerecord.Hash) bool,
+) (
+	err error,
 ) {
 	var buf strings.Builder
 	fmt.Fprintf(&buf, `SELECT %s FROM "%s" WHERE true`, strings.Join(op.Columns, ", "), op.TableName)
@@ -101,7 +103,7 @@ func (c *Conn) ExecQuery(ctx context.Context, op *activerecord.QueryOperation) (
 	fmt.Println(buf.String())
 	rws, err := c.db.QueryContext(ctx, buf.String(), args...)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	defer rws.Close()
@@ -109,7 +111,7 @@ func (c *Conn) ExecQuery(ctx context.Context, op *activerecord.QueryOperation) (
 	for rws.Next() {
 		var (
 			// Iterate over rows and scan one-by one.
-			row = make(map[string]interface{})
+			row = make(activerecord.Hash)
 			// Initalize a list of interface pointer, so the Scan operation could
 			// assign the results to the each element of the list.
 			vals = make([]interface{}, len(op.Columns))
@@ -119,13 +121,17 @@ func (c *Conn) ExecQuery(ctx context.Context, op *activerecord.QueryOperation) (
 			vals[i] = new(interface{})
 		}
 		if err = rws.Scan(vals...); err != nil {
-			return nil, err
+			return err
 		}
 		for i := range vals {
 			row[op.Columns[i]] = *(vals[i]).(*interface{})
 		}
-		rows = append(rows, row)
+
+		// Terminate the querying and close the reading cursor.
+		if !cb(row) {
+			break
+		}
 	}
 
-	return rows, nil
+	return nil
 }
