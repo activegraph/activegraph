@@ -10,6 +10,8 @@ import (
 	"github.com/activegraph/activegraph/activerecord/sqlite3"
 )
 
+type Hash map[string]interface{}
+
 func TestActiveRecord_Insert(t *testing.T) {
 	conn, err := sqlite3.Open(":memory:")
 	require.NoError(t, err)
@@ -23,18 +25,20 @@ func TestActiveRecord_Insert(t *testing.T) {
 		r.PrimaryKey("uid")
 		r.AttrInt("uid")
 		r.AttrString("title")
-		r.AttrInt("pages")
+		r.AttrInt("year")
 		r.BelongsTo("author") // author_id
 	})
 
 	Author.Connect(conn)
 	Book.Connect(conn)
 
-	author1 := Author.New(map[string]interface{}{"name": "Herman Melville"})
-	author2 := Author.New(map[string]interface{}{"name": "Noa Harrary"})
+	author1 := Author.New(Hash{"name": "Herman Melville"})
+	author2 := Author.New(Hash{"name": "Noah Harari"})
 
-	book1 := Book.New(map[string]interface{}{"title": "Moby Dick", "pages": 146, "author_id": 1})
-	book2 := Book.New(map[string]interface{}{"title": "Omoo", "pages": 231, "author_id": 1})
+	book1 := Book.New(Hash{"title": "Bill Budd", "year": 1846, "author_id": 1})
+	book2 := Book.New(Hash{"title": "Moby Dick", "year": 1851, "author_id": 1})
+	book3 := Book.New(Hash{"title": "Omoo", "year": 1847, "author_id": 1})
+	book4 := Book.New(Hash{"title": "Sapiens", "year": 2015, "author_id": 2})
 
 	err = conn.Exec(
 		context.TODO(), `
@@ -47,7 +51,7 @@ func TestActiveRecord_Insert(t *testing.T) {
 		CREATE TABLE books (
 			uid  		INTEGER NOT NULL,
 			author_id	INTEGER,
-			pages		INTEGER,
+			year		INTEGER,
 			title		VARCHAR,
 
 			PRIMARY KEY(uid)
@@ -59,32 +63,38 @@ func TestActiveRecord_Insert(t *testing.T) {
 
 	author1, err = author1.Insert()
 	require.NoError(t, err)
-	t.Logf("%s", author1)
-
 	author2, err = author2.Insert()
 	require.NoError(t, err)
-	t.Logf("%s", author2)
+
+	t.Logf("%s %s", author1, author2)
 
 	book1, err = book1.Insert()
 	require.NoError(t, err)
-	t.Logf("%s", book1)
-
 	book2, err = book2.Insert()
 	require.NoError(t, err)
-	t.Logf("%s", book2)
-
-	author, err := book1.Association("author")
+	book3, err = book3.Insert()
 	require.NoError(t, err)
+	book4, err = book4.Insert()
+	require.NoError(t, err)
+
+	t.Logf("%s %s %s %s", book1, book2, book3, book4)
+
+	author := book1.Association("author")
 	t.Logf("%s", author)
 
-	authors, err := Author.All()
+	authors, err := Author.All().ToA()
 	require.NoError(t, err)
 	t.Log(authors)
 
-	booksCollection, err := author1.Collection("book")
-	require.NoError(t, err)
+	books := author1.Collection("book").Where("year > ?", 1846)
+	bb, _ := books.ToA()
+	require.Len(t, bb, 2)
 
-	books, err := booksCollection.All()
-	require.NoError(t, err)
+	bb, _ = books.Where("year", 1851).ToA()
+	t.Log(bb)
+
+	books = Book.All().Group("author_id", "year").Select("author_id", "year")
 	t.Log(books)
+	bb, err = books.ToA()
+	t.Log(bb, err)
 }

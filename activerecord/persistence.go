@@ -5,9 +5,9 @@ import (
 )
 
 type Persistence interface {
-	Insert(ctx context.Context) (*ActiveRecord, error)
-	Update(ctx context.Context) (*ActiveRecord, error)
-	Delete(ctx context.Context) error
+	Insert() (*ActiveRecord, error)
+	Update() (*ActiveRecord, error)
+	Delete() error
 	IsPersisted() bool
 }
 
@@ -25,9 +25,11 @@ type DeleteOperation struct {
 }
 
 type QueryOperation struct {
-	TableName string
-	Columns   []string
-	Values    map[string]interface{}
+	TableName   string
+	Columns     []string
+	Values      map[string]interface{}
+	Predicates  []Predicate
+	GroupValues []string
 }
 
 type Conn interface {

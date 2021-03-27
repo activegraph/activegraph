@@ -5,6 +5,8 @@ import (
 	"sort"
 
 	"github.com/pkg/errors"
+
+	"github.com/activegraph/activegraph/internal"
 )
 
 const (
@@ -70,7 +72,7 @@ const (
 
 type attributesMap map[string]Attribute
 
-func (m attributesMap) Copy() attributesMap {
+func (m attributesMap) copy() attributesMap {
 	mm := make(attributesMap, len(m))
 	for name, attr := range m {
 		mm[name] = attr
@@ -82,14 +84,29 @@ func (m attributesMap) Copy() attributesMap {
 type attributes struct {
 	recordName string
 	primaryKey Attribute
-	keys       map[string]Attribute
+	keys       attributesMap
 	values     map[string]interface{}
+}
+
+func (a *attributes) copy() *attributes {
+	return &attributes{
+		recordName: a.recordName,
+		primaryKey: a.primaryKey,
+		keys:       a.keys.copy(),
+		values:     internal.CopyMap(a.values),
+	}
+}
+
+func (a *attributes) clear() *attributes {
+	aCopy := a.copy()
+	aCopy.values = make(map[string]interface{}, len(a.keys))
+	return aCopy
 }
 
 // newAttributes creates a new collection of attributes for the specified record.
 func newAttributes(
-	recordName string, attrs map[string]Attribute, values map[string]interface{},
-) (attributes, error) {
+	recordName string, attrs attributesMap, values map[string]interface{},
+) (*attributes, error) {
 
 	recordAttrs := attributes{
 		recordName: recordName,
@@ -101,7 +118,7 @@ func newAttributes(
 		// easier access to it.
 		if pk, ok := attr.(primaryKey); ok && pk.PrimaryKey() {
 			if recordAttrs.primaryKey != nil {
-				return attributes{}, errors.New("multiple primary keys are not supported")
+				return nil, errors.New("multiple primary keys are not supported")
 			}
 			recordAttrs.primaryKey = attr
 		}
@@ -112,11 +129,15 @@ func newAttributes(
 	// name is not presented in the schema definition.
 	if _, dup := recordAttrs.keys[defaultPrimaryKeyName]; dup {
 		err := errors.Errorf("%q is an attribute, but not a primary key", defaultPrimaryKeyName)
-		return attributes{}, err
+		return nil, err
 	}
 	if recordAttrs.primaryKey == nil {
 		pk := PrimaryKey{Attribute: IntAttr{Name: defaultPrimaryKeyName}}
 		recordAttrs.primaryKey = pk
+
+		if recordAttrs.keys == nil {
+			recordAttrs.keys = make(attributesMap)
+		}
 		recordAttrs.keys[defaultPrimaryKeyName] = pk
 	}
 
@@ -126,16 +147,16 @@ func newAttributes(
 		if _, ok := recordAttrs.keys[attrName]; !ok {
 
 			err := &ErrUnknownAttribute{RecordName: recordName, Attr: attrName}
-			return attributes{}, err
+			return nil, err
 		}
 	}
 
-	return recordAttrs, nil
+	return &recordAttrs, nil
 }
 
-func (a *attributes) forEach(fn func(name string, value interface{})) {
-	for name, value := range a.values {
-		fn(name, value)
+func (a *attributes) each(fn func(name string, value interface{})) {
+	for attrName, value := range a.values {
+		fn(attrName, value)
 	}
 }
 
@@ -165,6 +186,15 @@ func (a *attributes) HasAttribute(attrName string) bool {
 	return ok
 }
 
+func (a *attributes) HasAttributes(attrNames ...string) bool {
+	for _, attrName := range attrNames {
+		if !a.HasAttribute(attrName) {
+			return false
+		}
+	}
+	return true
+}
+
 // AssignAttribute allows to set attribute by the name.
 //
 // Method return an error when value does not pass validation of the attribute.
@@ -185,6 +215,31 @@ func (a *attributes) AssignAttribute(attrName string, val interface{}) error {
 	return nil
 }
 
+// AssignAttributes allows to set all the attributes by passing in a map of attributes
+// with keys matching attributet names.
+//
+// The method either assigns all provided attributes, no attributes are assigned
+// in case of error.
+func (a *attributes) AssignAttributes(newAttributes map[string]interface{}) error {
+	// Create a copy of attributes, either update all attributes or
+	// return the object in the previous state.
+	var (
+		keys   = a.keys.copy()
+		values = internal.CopyMap(a.values)
+	)
+
+	for attrName, val := range newAttributes {
+		err := a.AssignAttribute(attrName, val)
+		if err != nil {
+			// Return the original state of the attributes.
+			a.keys = keys
+			a.values = values
+			return err
+		}
+	}
+	return nil
+}
+
 // AccessAttribute returns the value of the attribute identified by attrName.
 func (a *attributes) AccessAttribute(attrName string) (val interface{}) {
 	if !a.HasAttribute(attrName) {
@@ -196,8 +251,19 @@ func (a *attributes) AccessAttribute(attrName string) (val interface{}) {
 // AttributePresent returns true if the specified attribute has been set by the user
 // or by a database and is not nil, otherwise false.
 func (a *attributes) AttributePresent(attrName string) bool {
-	if _, ok := a.keys[attrName]; !ok {
+	if !a.HasAttribute(attrName) {
 		return false
 	}
 	return a.values[attrName] != nil
+}
+
+// ExceptAttribute removes the specified attribute. Method returns error when attribute
+// is unknown.
+func (a *attributes) ExceptAttribute(attrName string) error {
+	if !a.HasAttribute(attrName) {
+		return &ErrUnknownAttribute{RecordName: a.recordName, Attr: attrName}
+	}
+	delete(a.keys, attrName)
+	delete(a.values, attrName)
+	return nil
 }
