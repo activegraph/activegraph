@@ -204,7 +204,7 @@ type Relation struct {
 	name       string
 	conn       Conn
 	scope      *attributes
-	where      *WhereChain
+	query      *query
 	reflection *Reflection
 	ctx        context.Context
 }
@@ -245,9 +245,9 @@ func Create(name string, defineRecord func(*R)) (*Relation, error) {
 	// Create the model schema, and register it within a reflection instance.
 	rel := &Relation{
 		name:       name,
-		scope:      &scope,
+		scope:      scope,
 		reflection: r.reflection,
-		where:      new(WhereChain),
+		query:      new(query),
 	}
 	r.reflection.AddReflection(name, rel)
 
@@ -263,10 +263,16 @@ func (rel *Relation) Copy() *Relation {
 		name:       rel.name,
 		conn:       rel.conn,
 		scope:      rel.scope.copy(),
-		where:      rel.where.copy(),
+		query:      rel.query.copy(),
 		reflection: rel.reflection,
 		ctx:        rel.ctx,
 	}
+}
+
+// IsEmpty returns true if there are no records.
+func (rel *Relation) IsEmpty() bool {
+	// TODO: implement the method.
+	return false
 }
 
 func (rel *Relation) Context() context.Context {
@@ -318,27 +324,71 @@ func (rel *Relation) All() *Relation {
 	return rel.Copy()
 }
 
-func (rel *Relation) Where(predicate string, args ...interface{}) *Relation {
-	relCopy := rel.Copy()
-	relCopy.where.predicates = append(relCopy.where.predicates, predicate)
-	relCopy.where.args = append(relCopy.where.args, args...)
-	return relCopy
+func (rel *Relation) Each(fn func(*ActiveRecord) error) error {
+	return nil
+}
+
+func (rel *Relation) Where(cond string, arg interface{}) *Relation {
+	newrel := rel.Copy()
+
+	// When the condition is a regular column, pass it through the regular
+	// column comparison instead of query chain predicates.
+	if newrel.scope.HasAttribute(cond) {
+		newrel.scope.AssignAttribute(cond, arg)
+	} else {
+		newrel.query.where(cond, arg)
+	}
+	return newrel
+}
+
+func (rel *Relation) Select(attrNames ...string) *Relation {
+	newrel := rel.Copy()
+
+	if !newrel.scope.HasAttributes(attrNames...) {
+		newrel.scope, _ = newAttributes(rel.name, nil, nil)
+		return newrel
+	}
+
+	attrMap := make(map[string]struct{}, len(attrNames))
+	for _, attrName := range attrNames {
+		attrMap[attrName] = struct{}{}
+	}
+
+	for _, attrName := range newrel.scope.AttributeNames() {
+		if _, ok := attrMap[attrName]; !ok {
+			newrel.scope.ExceptAttribute(attrName)
+		}
+	}
+	return newrel
+}
+
+func (rel *Relation) Group(attrNames ...string) *Relation {
+	newrel := rel.Copy()
+
+	// When the attribute is not part of the scope, return an empty relation.
+	if !newrel.scope.HasAttributes(attrNames...) {
+		newrel.scope, _ = newAttributes(rel.name, nil, nil)
+		return newrel
+	}
+
+	newrel.query.group(attrNames...)
+	return newrel
 }
 
 // ToA converts Relation to array. The method access database to retrieve objects.
 func (rel *Relation) ToA() ([]*ActiveRecord, error) {
 	op := QueryOperation{
-		TableName:  rel.name + "s",
-		Columns:    rel.scope.AttributeNames(),
-		Values:     make(map[string]interface{}),
-		Predicates: rel.where.predicates,
-		Args:       rel.where.args,
+		TableName:   rel.name + "s",
+		Columns:     rel.scope.AttributeNames(),
+		Values:      make(map[string]interface{}),
+		Predicates:  rel.query.predicates,
+		GroupValues: rel.query.groupValues,
 	}
 
 	// When the scope is configured for the relation, add all attributes
 	// to the list of query operation, so only neccessary subset of records
 	// are returned to the caller.
-	rel.scope.forEach(func(name string, value interface{}) {
+	rel.scope.each(func(name string, value interface{}) {
 		op.Values[name] = value
 	})
 

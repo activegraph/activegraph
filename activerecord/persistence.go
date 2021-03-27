@@ -25,11 +25,11 @@ type DeleteOperation struct {
 }
 
 type QueryOperation struct {
-	TableName  string
-	Columns    []string
-	Values     map[string]interface{}
-	Predicates []string
-	Args       []interface{}
+	TableName   string
+	Columns     []string
+	Values      map[string]interface{}
+	Predicates  []Predicate
+	GroupValues []string
 }
 
 type Conn interface {

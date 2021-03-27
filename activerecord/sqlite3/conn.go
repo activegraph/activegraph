@@ -88,12 +88,18 @@ func (c *Conn) ExecQuery(ctx context.Context, op *activerecord.QueryOperation) (
 		fmt.Fprintf(&buf, ` AND "%s" = '%v'`, col, val)
 	}
 
-	for _, pr := range op.Predicates {
-		fmt.Fprintf(&buf, ` AND %s`, pr)
+	var args []interface{}
+	for _, pred := range op.Predicates {
+		fmt.Fprintf(&buf, ` AND (%s)`, pred.Cond)
+		args = append(args, pred.Args...)
+	}
+
+	if len(op.GroupValues) > 0 {
+		fmt.Fprintf(&buf, ` GROUP BY %s`, strings.Join(op.GroupValues, ", "))
 	}
 
 	fmt.Println(buf.String())
-	rws, err := c.db.QueryContext(ctx, buf.String(), op.Args...)
+	rws, err := c.db.QueryContext(ctx, buf.String(), args...)
 	if err != nil {
 		return nil, err
 	}
