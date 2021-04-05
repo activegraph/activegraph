@@ -9,15 +9,20 @@ var (
 )
 
 type Reflection struct {
-	rels map[string]*Relation
+	rels   map[string]*Relation
+	tables map[string]string
 }
 
 func NewReflection() *Reflection {
-	return &Reflection{rels: make(map[string]*Relation)}
+	return &Reflection{
+		rels:   make(map[string]*Relation),
+		tables: make(map[string]string),
+	}
 }
 
 func (r *Reflection) AddReflection(name string, rel *Relation) {
 	r.rels[name] = rel
+	r.tables[rel.tableName] = name
 }
 
 func (r *Reflection) Reflection(name string) (*Relation, error) {
@@ -26,4 +31,12 @@ func (r *Reflection) Reflection(name string) (*Relation, error) {
 		return nil, errors.Errorf("unknown reflection %q", name)
 	}
 	return rel, nil
+}
+
+func (r *Reflection) SearchTable(tableName string) (*Relation, error) {
+	name, ok := r.tables[tableName]
+	if !ok {
+		return nil, errors.Errorf("unknown table %q", tableName)
+	}
+	return r.rels[name], nil
 }

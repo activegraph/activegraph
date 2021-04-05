@@ -26,7 +26,11 @@ func TestActiveRecord_Insert(t *testing.T) {
 		r.AttrInt("uid")
 		r.AttrString("title")
 		r.AttrInt("year")
-		r.BelongsTo("author") // author_id
+		// r.BelongsTo("author") // author_id
+
+		r.BelongsTo("author", func(assoc *activerecord.BelongsTo) {
+			assoc.ForeignKey("author_id")
+		})
 	})
 
 	Author.Connect(conn)
@@ -98,4 +102,12 @@ func TestActiveRecord_Insert(t *testing.T) {
 	t.Log(books)
 	bb, err = books.ToA()
 	t.Log(bb, err)
+
+	bookAuthors := Book.Joins("author")
+	bb, err = bookAuthors.ToA()
+	t.Log(bb, err)
+	t.Log(bb[0], bb[0].Association("author"))
+	t.Log(bb[1], bb[1].Association("author"))
+	t.Log(bb[2], bb[2].Association("author"))
+	t.Log(bb[3], bb[3].Association("author"))
 }

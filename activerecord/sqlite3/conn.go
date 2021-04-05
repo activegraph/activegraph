@@ -84,8 +84,14 @@ func (c *Conn) ExecQuery(
 	err error,
 ) {
 	var buf strings.Builder
-	fmt.Fprintf(&buf, `SELECT %s FROM "%s" WHERE true`, strings.Join(op.Columns, ", "), op.TableName)
+	fmt.Fprintf(&buf, `SELECT %s FROM "%s"`, strings.Join(op.Columns, ", "), op.TableName)
 
+	for _, dep := range op.Dependencies {
+		fmt.Fprintf(&buf, ` INNER JOIN "%s" ON `, dep.TableName)
+		fmt.Fprintf(&buf, `%s.%s = %s.%s `, op.TableName, dep.ForeignKey, dep.TableName, dep.PrimaryKey)
+	}
+
+	fmt.Fprintf(&buf, ` WHERE true`)
 	for col, val := range op.Values {
 		fmt.Fprintf(&buf, ` AND "%s" = '%v'`, col, val)
 	}
