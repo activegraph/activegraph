@@ -15,10 +15,20 @@ func (e *ErrUnknownPrimaryKey) Error() string {
 }
 
 type R struct {
+	tableName  string
 	primaryKey string
 	attrs      attributesMap
 	assocs     associationsMap
 	reflection *Reflection
+}
+
+// TableName sets the table name explicitely.
+//
+//	Vertex := activerecord.New("vertex", func(r *activerecord.R) {
+//		r.TableName("vertices")
+//	})
+func (r *R) TableName(name string) {
+	r.tableName = name
 }
 
 func (r *R) PrimaryKey(name string) {
@@ -43,22 +53,38 @@ func (r *R) Scope(reflection *Reflection) {
 	r.reflection = reflection
 }
 
-func (r *R) BelongsTo(name string) {
-	r.attrs[name+"_id"] = IntAttr{Name: name + "_id", Validates: IntValidators(nil)}
-	r.assocs[name] = &BelongsToAssoc{Name: name}
+func (r *R) BelongsTo(name string, init ...func(*BelongsTo)) {
+	assoc := BelongsTo{name: name}
+
+	switch len(init) {
+	case 0:
+	case 1:
+		init[0](&assoc)
+	default:
+		panic("multiple initializations passed")
+	}
+
+	r.attrs[assoc.AssociationForeignKey()] = IntAttr{
+		Name:      assoc.AssociationForeignKey(),
+		Validates: IntValidators(nil),
+	}
+	r.assocs[name] = &assoc
 }
 
 func (r *R) HasMany(name string) {
-	r.assocs[name] = &HasManyAssoc{Name: name}
+	r.assocs[name] = &HasMany{name: name}
 }
 
 type Relation struct {
-	name       string
-	conn       Conn
-	scope      *attributes
-	query      *query
-	reflection *Reflection
-	ctx        context.Context
+	name      string
+	tableName string
+
+	conn  Conn
+	scope *attributes
+	query *query
+	ctx   context.Context
+
+	associations
 }
 
 func New(name string, defineRecord func(*R)) *Relation {
@@ -69,13 +95,14 @@ func New(name string, defineRecord func(*R)) *Relation {
 	return schema
 }
 
-func Create(name string, defineRecord func(*R)) (*Relation, error) {
+func Create(name string, init func(*R)) (*Relation, error) {
 	r := R{
 		assocs:     make(associationsMap),
 		attrs:      make(attributesMap),
 		reflection: globalReflection,
 	}
-	defineRecord(&r)
+
+	init(&r)
 
 	// When the primary key was assigned to record builder, mark it explicitely
 	// wrapping with PrimaryKey structure. Otherwise, fallback to the default primary
@@ -87,6 +114,9 @@ func Create(name string, defineRecord func(*R)) (*Relation, error) {
 		}
 		r.attrs[r.primaryKey] = PrimaryKey{Attribute: attr}
 	}
+	if r.tableName == "" {
+		r.tableName = name + "s"
+	}
 
 	// The scope is empty by default.
 	scope, err := newAttributes(name, r.attrs.copy(), nil)
@@ -94,16 +124,23 @@ func Create(name string, defineRecord func(*R)) (*Relation, error) {
 		return nil, err
 	}
 
+	assocs := newAssociations(name, r.assocs.copy(), r.reflection)
+
 	// Create the model schema, and register it within a reflection instance.
 	rel := &Relation{
-		name:       name,
-		scope:      scope,
-		reflection: r.reflection,
-		query:      new(query),
+		name:         name,
+		tableName:    r.tableName,
+		scope:        scope,
+		associations: *assocs,
+		query:        new(query),
 	}
 	r.reflection.AddReflection(name, rel)
 
 	return rel, nil
+}
+
+func (rel *Relation) TableName() string {
+	return rel.tableName
 }
 
 func (rel *Relation) Name() string {
@@ -112,13 +149,19 @@ func (rel *Relation) Name() string {
 
 func (rel *Relation) Copy() *Relation {
 	return &Relation{
-		name:       rel.name,
-		conn:       rel.conn,
-		scope:      rel.scope.copy(),
-		query:      rel.query.copy(),
-		reflection: rel.reflection,
-		ctx:        rel.ctx,
+		name:         rel.name,
+		tableName:    rel.tableName,
+		conn:         rel.conn,
+		scope:        rel.scope.copy(),
+		query:        rel.query.copy(),
+		ctx:          rel.ctx,
+		associations: *rel.associations.copy(),
 	}
+}
+
+func (rel *Relation) empty() *Relation {
+	rel.scope, _ = newAttributes(rel.name, nil, nil)
+	return rel
 }
 
 // IsEmpty returns true if there are no records.
@@ -160,11 +203,27 @@ func (rel *Relation) Create(params map[string]interface{}) (*ActiveRecord, error
 	}
 
 	return &ActiveRecord{
-		name:       rel.name,
-		conn:       rel.conn,
-		attributes: *attributes,
-		reflection: rel.reflection,
+		name:               rel.name,
+		tableName:          rel.tableName,
+		conn:               rel.conn,
+		attributes:         *attributes,
+		associations:       *rel.associations.copy(),
+		associationRecords: make(map[string]*ActiveRecord),
 	}, nil
+}
+
+func (rel *Relation) ExtractRecord(h Hash) (*ActiveRecord, error) {
+	var (
+		attrNames   = rel.scope.AttributeNames()
+		columnNames = rel.scope.ColumnNames()
+	)
+
+	params := make(map[string]interface{}, len(attrNames))
+	for i, colName := range columnNames {
+		params[attrNames[i]] = h[colName]
+	}
+
+	return rel.Create(params)
 }
 
 // PrimaryKey returns the attribute name of the record's primary key.
@@ -176,13 +235,19 @@ func (rel *Relation) All() *Relation {
 	return rel.Copy()
 }
 
+// TODO: move to the Schema type all column-related methods.
+func (rel *Relation) ColumnNames() []string {
+	return rel.scope.ColumnNames()
+}
+
 func (rel *Relation) Each(fn func(*ActiveRecord) error) error {
 	op := QueryOperation{
-		TableName:   rel.name + "s",
-		Columns:     rel.scope.AttributeNames(),
-		Values:      make(map[string]interface{}),
-		Predicates:  rel.query.predicates,
-		GroupValues: rel.query.groupValues,
+		TableName:    rel.tableName,
+		Columns:      rel.ColumnNames(),
+		Values:       make(map[string]interface{}),
+		Predicates:   rel.query.predicates,
+		Dependencies: rel.query.Dependencies(),
+		GroupValues:  rel.query.groupValues,
 	}
 
 	// When the scope is configured for the relation, add all attributes
@@ -192,12 +257,30 @@ func (rel *Relation) Each(fn func(*ActiveRecord) error) error {
 		op.Values[name] = value
 	})
 
+	// Include all join dependencies into the query with fully-qualified column
+	// names, so each part of the request can be extracted individually.
+	for _, dep := range rel.query.joinDeps {
+		op.Columns = append(op.Columns, dep.Relation.ColumnNames()...)
+	}
+
 	var lasterr error
 
 	err := rel.conn.ExecQuery(rel.Context(), &op, func(h Hash) bool {
-		rec, e := rel.Create(h)
+		rec, e := rel.ExtractRecord(h)
 		if lasterr = e; e != nil {
 			return false
+		}
+
+		for _, dep := range rel.query.joinDeps {
+			arec, e := dep.Relation.ExtractRecord(h)
+			if lasterr = e; e != nil {
+				return false
+			}
+
+			e = rec.AssignAssociation(dep.Relation.Name(), arec)
+			if lasterr = e; e != nil {
+				return false
+			}
 		}
 
 		if lasterr = fn(rec); lasterr != nil {
@@ -229,8 +312,7 @@ func (rel *Relation) Select(attrNames ...string) *Relation {
 	newrel := rel.Copy()
 
 	if !newrel.scope.HasAttributes(attrNames...) {
-		newrel.scope, _ = newAttributes(rel.name, nil, nil)
-		return newrel
+		return newrel.empty()
 	}
 
 	attrMap := make(map[string]struct{}, len(attrNames))
@@ -251,17 +333,27 @@ func (rel *Relation) Group(attrNames ...string) *Relation {
 
 	// When the attribute is not part of the scope, return an empty relation.
 	if !newrel.scope.HasAttributes(attrNames...) {
-		newrel.scope, _ = newAttributes(rel.name, nil, nil)
-		return newrel
+		return newrel.empty()
 	}
 
 	newrel.query.group(attrNames...)
 	return newrel
 }
 
+func (rel *Relation) Joins(assocName string) *Relation {
+	newrel := rel.Copy()
+	association := newrel.ReflectOnAssociation(assocName)
+	if association == nil {
+		return newrel.empty()
+	}
+
+	newrel.query.join(association.Relation.Copy(), association.Association)
+	return newrel
+}
+
 func (rel *Relation) Find(id interface{}) (*ActiveRecord, error) {
 	op := QueryOperation{
-		TableName: rel.name + "s",
+		TableName: rel.tableName,
 		Columns:   rel.scope.AttributeNames(),
 		Values:    map[string]interface{}{rel.PrimaryKey(): id},
 	}

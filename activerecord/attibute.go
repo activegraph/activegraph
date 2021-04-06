@@ -105,6 +105,16 @@ func (a *attributes) clear() *attributes {
 	return newa
 }
 
+func (a *attributes) merge(a1 *attributes) *attributes {
+	for attrName, attr := range a1.keys {
+		a.keys[attrName] = attr
+	}
+	for attrName, attrVal := range a1.values {
+		a.values[attrName] = attrVal
+	}
+	return a
+}
+
 // newAttributes creates a new collection of attributes for the specified record.
 func newAttributes(recordName string, attrs attributesMap, values Hash) (
 	*attributes, error,
@@ -176,6 +186,15 @@ func (a *attributes) AttributeNames() []string {
 	names := make([]string, 0, len(a.keys))
 	for name := range a.keys {
 		names = append(names, name)
+	}
+	sort.StringSlice(names).Sort()
+	return names
+}
+
+func (a *attributes) ColumnNames() []string {
+	names := make([]string, 0, len(a.keys))
+	for name := range a.keys {
+		names = append(names, a.recordName+"s."+name)
 	}
 	sort.StringSlice(names).Sort()
 	return names

@@ -16,21 +16,29 @@ func (e *ErrRecordNotFound) Error() string {
 }
 
 type ActiveRecord struct {
-	name       string
-	conn       Conn
-	ctx        context.Context
-	reflection *Reflection
+	name      string
+	tableName string
+	conn      Conn
+	ctx       context.Context
 
 	attributes
+	associations
+
+	associationRecords map[string]*ActiveRecord
+}
+
+func (r *ActiveRecord) Name() string {
+	return r.name
 }
 
 func (r *ActiveRecord) Copy() *ActiveRecord {
 	return &ActiveRecord{
-		name:       r.name,
-		conn:       r.conn,
-		ctx:        r.ctx,
-		reflection: r.reflection,
-		attributes: *r.attributes.copy(),
+		name:         r.name,
+		tableName:    r.tableName,
+		conn:         r.conn,
+		ctx:          r.ctx,
+		attributes:   *r.attributes.copy(),
+		associations: *r.associations.copy(),
 	}
 }
 
@@ -42,18 +50,18 @@ func (r *ActiveRecord) Context() context.Context {
 }
 
 func (r *ActiveRecord) WithContext(ctx context.Context) *ActiveRecord {
-	rCopy := r.Copy()
-	rCopy.ctx = ctx
-	return rCopy
+	newr := r.Copy()
+	newr.ctx = ctx
+	return newr
 }
 
 func (r *ActiveRecord) String() string {
 	var buf strings.Builder
-	fmt.Fprintf(&buf, "#<%s:%p ", strings.Title(r.name), r)
+	fmt.Fprintf(&buf, "#<%s ", strings.Title(r.name))
 
 	attrNames := r.AttributeNames()
 	for i, attrName := range attrNames {
-		fmt.Fprintf(&buf, "%s:%#v", attrName, r.AccessAttribute(attrName))
+		fmt.Fprintf(&buf, "%s: %#v", attrName, r.AccessAttribute(attrName))
 		if i < len(attrNames)-1 {
 			fmt.Fprint(&buf, ", ")
 		}
@@ -80,13 +88,32 @@ func (r *ActiveRecord) Validate() error {
 }
 
 func (r *ActiveRecord) AccessAssociation(assocName string) (*ActiveRecord, error) {
-	rel, err := r.reflection.Reflection(assocName)
+	if rec, ok := r.associationRecords[assocName]; ok {
+		return rec, nil
+	}
+
+	reflection := r.ReflectOnAssociation(assocName)
+	if reflection == nil {
+		return nil, &ErrUnknownAssociation{RecordName: r.name, Assoc: assocName}
+	}
+
+	assocId := r.AccessAttribute(reflection.AssociationForeignKey())
+	rec, err := reflection.Relation.WithContext(r.Context()).Find(assocId)
 	if err != nil {
 		return nil, err
 	}
 
-	assocId := r.AccessAttribute(assocName + "_id")
-	return rel.WithContext(r.Context()).Find(assocId)
+	r.associationRecords[assocName] = rec
+	return rec, nil
+}
+
+func (r *ActiveRecord) AssignAssociation(assocName string, rec *ActiveRecord) error {
+	if !r.HasAssociation(assocName) {
+		return &ErrUnknownAssociation{RecordName: r.name, Assoc: assocName}
+	}
+
+	r.associationRecords[assocName] = rec
+	return nil
 }
 
 // Association returns the associated object, nil is returned if none is found.
@@ -96,20 +123,25 @@ func (r *ActiveRecord) Association(assocName string) *ActiveRecord {
 }
 
 func (r *ActiveRecord) AccessCollection(assocName string) (*Relation, error) {
-	rel, err := r.reflection.Reflection(assocName)
-	if err != nil {
-		return nil, err
+	foreignRef := r.ReflectOnAssociation(assocName)
+	if foreignRef == nil {
+		return nil, &ErrUnknownAssociation{RecordName: r.name, Assoc: assocName}
 	}
 
-	rel = rel.WithContext(r.Context())
-	err = rel.scope.AssignAttribute(r.name+"_id", r.ID())
+	selfRef := foreignRef.Relation.ReflectOnAssociation(r.name)
+	if selfRef == nil {
+		return nil, &ErrUnknownAssociation{RecordName: foreignRef.Relation.Name(), Assoc: r.name}
+	}
+
+	rel := foreignRef.Relation.WithContext(r.Context())
+	err := rel.scope.AssignAttribute(selfRef.AssociationForeignKey(), r.ID())
 	if err != nil {
 		return nil, err
 	}
 	return rel, nil
 }
 
-// Collection returns a Relation of all associated records. A `nil` is returned
+// Collection returns a Relation of all associated records. A nil is returned
 // if relation does not belong to the record.
 func (r *ActiveRecord) Collection(assocName string) *Relation {
 	rel, _ := r.AccessCollection(assocName)
@@ -118,9 +150,8 @@ func (r *ActiveRecord) Collection(assocName string) *Relation {
 
 func (r *ActiveRecord) Insert() (*ActiveRecord, error) {
 	op := InsertOperation{
-		// TODO: specify plural name of a record table.
-		TableName: r.recordName + "s",
-		Values:    r.values,
+		TableName: r.tableName,
+		Values:    r.attributes.values,
 	}
 
 	id, err := r.conn.ExecInsert(r.Context(), &op)
@@ -141,7 +172,7 @@ func (r *ActiveRecord) Update() (*ActiveRecord, error) {
 
 func (r *ActiveRecord) Delete() error {
 	op := DeleteOperation{
-		TableName:  r.recordName + "s",
+		TableName:  r.tableName,
 		PrimaryKey: r.primaryKey.AttributeName(),
 		Value:      r.ID(),
 	}
