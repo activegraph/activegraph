@@ -32,11 +32,3 @@ func (r *Reflection) Reflection(name string) (*Relation, error) {
 	}
 	return rel, nil
 }
-
-func (r *Reflection) SearchTable(tableName string) (*Relation, error) {
-	name, ok := r.tables[tableName]
-	if !ok {
-		return nil, errors.Errorf("unknown table %q", tableName)
-	}
-	return r.rels[name], nil
-}

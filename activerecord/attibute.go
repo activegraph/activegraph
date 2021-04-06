@@ -191,7 +191,7 @@ func (a *attributes) AttributeNames() []string {
 	return names
 }
 
-func (a *attributes) TableAttributeNames() []string {
+func (a *attributes) ColumnNames() []string {
 	names := make([]string, 0, len(a.keys))
 	for name := range a.keys {
 		names = append(names, a.recordName+"s."+name)

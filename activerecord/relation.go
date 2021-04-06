@@ -79,12 +79,12 @@ type Relation struct {
 	name      string
 	tableName string
 
-	conn       Conn
-	scope      *attributes
-	assocs     *associations
-	query      *query
-	reflection *Reflection
-	ctx        context.Context
+	conn  Conn
+	scope *attributes
+	query *query
+	ctx   context.Context
+
+	associations
 }
 
 func New(name string, defineRecord func(*R)) *Relation {
@@ -128,16 +128,19 @@ func Create(name string, init func(*R)) (*Relation, error) {
 
 	// Create the model schema, and register it within a reflection instance.
 	rel := &Relation{
-		name:       name,
-		tableName:  r.tableName,
-		scope:      scope,
-		assocs:     assocs,
-		reflection: r.reflection,
-		query:      new(query),
+		name:         name,
+		tableName:    r.tableName,
+		scope:        scope,
+		associations: *assocs,
+		query:        new(query),
 	}
 	r.reflection.AddReflection(name, rel)
 
 	return rel, nil
+}
+
+func (rel *Relation) TableName() string {
+	return rel.tableName
 }
 
 func (rel *Relation) Name() string {
@@ -146,14 +149,13 @@ func (rel *Relation) Name() string {
 
 func (rel *Relation) Copy() *Relation {
 	return &Relation{
-		name:       rel.name,
-		tableName:  rel.tableName,
-		conn:       rel.conn,
-		assocs:     rel.assocs.copy(),
-		scope:      rel.scope.copy(),
-		query:      rel.query.copy(),
-		reflection: rel.reflection,
-		ctx:        rel.ctx,
+		name:         rel.name,
+		tableName:    rel.tableName,
+		conn:         rel.conn,
+		scope:        rel.scope.copy(),
+		query:        rel.query.copy(),
+		ctx:          rel.ctx,
+		associations: *rel.associations.copy(),
 	}
 }
 
@@ -201,13 +203,27 @@ func (rel *Relation) Create(params map[string]interface{}) (*ActiveRecord, error
 	}
 
 	return &ActiveRecord{
-		name:         rel.name,
-		tableName:    rel.tableName,
-		conn:         rel.conn,
-		attributes:   *attributes,
-		associations: *rel.assocs.copy(),
-		reflection:   rel.reflection,
+		name:               rel.name,
+		tableName:          rel.tableName,
+		conn:               rel.conn,
+		attributes:         *attributes,
+		associations:       *rel.associations.copy(),
+		associationRecords: make(map[string]*ActiveRecord),
 	}, nil
+}
+
+func (rel *Relation) ExtractRecord(h Hash) (*ActiveRecord, error) {
+	var (
+		attrNames   = rel.scope.AttributeNames()
+		columnNames = rel.scope.ColumnNames()
+	)
+
+	params := make(map[string]interface{}, len(attrNames))
+	for i, colName := range columnNames {
+		params[attrNames[i]] = h[colName]
+	}
+
+	return rel.Create(params)
 }
 
 // PrimaryKey returns the attribute name of the record's primary key.
@@ -219,13 +235,18 @@ func (rel *Relation) All() *Relation {
 	return rel.Copy()
 }
 
+// TODO: move to the Schema type all column-related methods.
+func (rel *Relation) ColumnNames() []string {
+	return rel.scope.ColumnNames()
+}
+
 func (rel *Relation) Each(fn func(*ActiveRecord) error) error {
 	op := QueryOperation{
 		TableName:    rel.tableName,
-		Columns:      rel.scope.TableAttributeNames(),
+		Columns:      rel.ColumnNames(),
 		Values:       make(map[string]interface{}),
 		Predicates:   rel.query.predicates,
-		Dependencies: rel.query.dependencies,
+		Dependencies: rel.query.Dependencies(),
 		GroupValues:  rel.query.groupValues,
 	}
 
@@ -236,38 +257,27 @@ func (rel *Relation) Each(fn func(*ActiveRecord) error) error {
 		op.Values[name] = value
 	})
 
-	for _, dep := range rel.query.dependencies {
-		assocrel, _ := rel.assocs.reflection.SearchTable(dep.TableName)
-		op.Columns = append(op.Columns, assocrel.scope.TableAttributeNames()...)
+	// Include all join dependencies into the query with fully-qualified column
+	// names, so each part of the request can be extracted individually.
+	for _, dep := range rel.query.joinDeps {
+		op.Columns = append(op.Columns, dep.Relation.ColumnNames()...)
 	}
 
 	var lasterr error
 
 	err := rel.conn.ExecQuery(rel.Context(), &op, func(h Hash) bool {
-		relH := make(Hash)
-
-		for _, attrName := range rel.scope.AttributeNames() {
-			relH[attrName] = h[rel.tableName+"."+attrName]
-		}
-
-		rec, e := rel.Create(relH)
+		rec, e := rel.ExtractRecord(h)
 		if lasterr = e; e != nil {
 			return false
 		}
 
-		for _, dep := range rel.query.dependencies {
-			relH := make(Hash)
-			assocRel, _ := rel.assocs.reflection.SearchTable(dep.TableName)
-
-			for _, attrName := range assocRel.scope.AttributeNames() {
-				relH[attrName] = h[assocRel.tableName+"."+attrName]
-			}
-			assocRec, e := assocRel.Create(relH)
+		for _, dep := range rel.query.joinDeps {
+			arec, e := dep.Relation.ExtractRecord(h)
 			if lasterr = e; e != nil {
 				return false
 			}
 
-			e = rec.AssignAssociation(assocRel.name, assocRec)
+			e = rec.AssignAssociation(dep.Relation.Name(), arec)
 			if lasterr = e; e != nil {
 				return false
 			}
@@ -332,18 +342,12 @@ func (rel *Relation) Group(attrNames ...string) *Relation {
 
 func (rel *Relation) Joins(assocName string) *Relation {
 	newrel := rel.Copy()
-
-	assoc := newrel.assocs.get(assocName)
-	if assoc == nil {
+	association := newrel.ReflectOnAssociation(assocName)
+	if association == nil {
 		return newrel.empty()
 	}
 
-	assocrel, err := newrel.reflection.Reflection(assocName)
-	if err != nil {
-		return newrel.empty()
-	}
-
-	newrel.query.join(assocrel.tableName, assoc.AssociationForeignKey(), assocrel.PrimaryKey())
+	newrel.query.join(association.Relation.Copy(), association.Association)
 	return newrel
 }
 

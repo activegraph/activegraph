@@ -24,6 +24,12 @@ type DeleteOperation struct {
 	Value      interface{}
 }
 
+type Dependency struct {
+	TableName  string
+	ForeignKey string
+	PrimaryKey string
+}
+
 type QueryOperation struct {
 	TableName    string
 	Columns      []string

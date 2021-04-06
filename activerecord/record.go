@@ -16,24 +16,29 @@ func (e *ErrRecordNotFound) Error() string {
 }
 
 type ActiveRecord struct {
-	name       string
-	tableName  string
-	conn       Conn
-	ctx        context.Context
-	reflection *Reflection
+	name      string
+	tableName string
+	conn      Conn
+	ctx       context.Context
 
 	attributes
 	associations
+
+	associationRecords map[string]*ActiveRecord
+}
+
+func (r *ActiveRecord) Name() string {
+	return r.name
 }
 
 func (r *ActiveRecord) Copy() *ActiveRecord {
 	return &ActiveRecord{
-		name:       r.name,
-		tableName:  r.tableName,
-		conn:       r.conn,
-		ctx:        r.ctx,
-		reflection: r.reflection,
-		attributes: *r.attributes.copy(),
+		name:         r.name,
+		tableName:    r.tableName,
+		conn:         r.conn,
+		ctx:          r.ctx,
+		attributes:   *r.attributes.copy(),
+		associations: *r.associations.copy(),
 	}
 }
 
@@ -45,9 +50,9 @@ func (r *ActiveRecord) Context() context.Context {
 }
 
 func (r *ActiveRecord) WithContext(ctx context.Context) *ActiveRecord {
-	rCopy := r.Copy()
-	rCopy.ctx = ctx
-	return rCopy
+	newr := r.Copy()
+	newr.ctx = ctx
+	return newr
 }
 
 func (r *ActiveRecord) String() string {
@@ -83,18 +88,32 @@ func (r *ActiveRecord) Validate() error {
 }
 
 func (r *ActiveRecord) AccessAssociation(assocName string) (*ActiveRecord, error) {
-	assocRec := r.associations.AccessAssociation(assocName)
-	if assocRec != nil {
-		return assocRec, nil
+	if rec, ok := r.associationRecords[assocName]; ok {
+		return rec, nil
 	}
 
-	assocId := r.AccessAttribute(r.associations.get(assocName).AssociationForeignKey())
-	assocRel, err := r.reflection.Reflection(assocName)
+	reflection := r.ReflectOnAssociation(assocName)
+	if reflection == nil {
+		return nil, &ErrUnknownAssociation{RecordName: r.name, Assoc: assocName}
+	}
+
+	assocId := r.AccessAttribute(reflection.AssociationForeignKey())
+	rec, err := reflection.Relation.WithContext(r.Context()).Find(assocId)
 	if err != nil {
 		return nil, err
 	}
 
-	return assocRel.WithContext(r.Context()).Find(assocId)
+	r.associationRecords[assocName] = rec
+	return rec, nil
+}
+
+func (r *ActiveRecord) AssignAssociation(assocName string, rec *ActiveRecord) error {
+	if !r.HasAssociation(assocName) {
+		return &ErrUnknownAssociation{RecordName: r.name, Assoc: assocName}
+	}
+
+	r.associationRecords[assocName] = rec
+	return nil
 }
 
 // Association returns the associated object, nil is returned if none is found.
@@ -104,13 +123,18 @@ func (r *ActiveRecord) Association(assocName string) *ActiveRecord {
 }
 
 func (r *ActiveRecord) AccessCollection(assocName string) (*Relation, error) {
-	rel, err := r.reflection.Reflection(assocName)
-	if err != nil {
-		return nil, err
+	foreignRef := r.ReflectOnAssociation(assocName)
+	if foreignRef == nil {
+		return nil, &ErrUnknownAssociation{RecordName: r.name, Assoc: assocName}
 	}
 
-	rel = rel.WithContext(r.Context())
-	err = rel.scope.AssignAttribute(r.name+"_id", r.ID())
+	selfRef := foreignRef.Relation.ReflectOnAssociation(r.name)
+	if selfRef == nil {
+		return nil, &ErrUnknownAssociation{RecordName: foreignRef.Relation.Name(), Assoc: r.name}
+	}
+
+	rel := foreignRef.Relation.WithContext(r.Context())
+	err := rel.scope.AssignAttribute(selfRef.AssociationForeignKey(), r.ID())
 	if err != nil {
 		return nil, err
 	}

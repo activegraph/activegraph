@@ -19,6 +19,11 @@ type Association interface {
 	AssociationForeignKey() string
 }
 
+type AssociationReflection struct {
+	*Relation
+	Association
+}
+
 type BelongsTo struct {
 	name       string
 	foreignKey string
@@ -120,19 +125,28 @@ func (a *associations) get(assocName string) Association {
 	return a.keys[assocName]
 }
 
-func (a *associations) AccessAssociation(assocName string) *ActiveRecord {
+// ReflectOnAssociation returns AssociationReflection for the specified association.
+func (a *associations) ReflectOnAssociation(assocName string) *AssociationReflection {
 	if !a.HasAssociation(assocName) {
 		return nil
 	}
-	return a.values[assocName]
+	rel, err := a.reflection.Reflection(assocName)
+	if err != nil {
+		return nil
+	}
+	return &AssociationReflection{Relation: rel, Association: a.keys[assocName]}
 }
 
-func (a *associations) AssignAssociation(assocName string, val *ActiveRecord) error {
-	_, ok := a.keys[assocName]
-	if !ok {
-		return &ErrUnknownAssociation{RecordName: a.recordName, Assoc: assocName}
+// ReflectOnAllAssociations returns an array of AssociationReflection types for all
+// associations in the Relation.
+func (a *associations) ReflectOnAllAssociations() []*AssociationReflection {
+	arefs := make([]*AssociationReflection, 0, len(a.keys))
+	for assocName, assoc := range a.keys {
+		rel, _ := a.reflection.Reflection(assocName)
+		if rel == nil {
+			continue
+		}
+		arefs = append(arefs, &AssociationReflection{Relation: rel, Association: assoc})
 	}
-
-	a.values[assocName] = val
-	return nil
+	return arefs
 }

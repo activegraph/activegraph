@@ -91,7 +91,9 @@ func (c *Conn) ExecQuery(
 		fmt.Fprintf(&buf, `%s.%s = %s.%s `, op.TableName, dep.ForeignKey, dep.TableName, dep.PrimaryKey)
 	}
 
-	fmt.Fprintf(&buf, ` WHERE true`)
+	if len(op.Values)+len(op.Predicates) > 0 {
+		fmt.Fprintf(&buf, ` WHERE true`)
+	}
 	for col, val := range op.Values {
 		fmt.Fprintf(&buf, ` AND "%s" = '%v'`, col, val)
 	}
