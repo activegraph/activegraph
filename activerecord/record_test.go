@@ -26,15 +26,21 @@ func TestActiveRecord_Insert(t *testing.T) {
 		r.AttrInt("uid")
 		r.AttrString("title")
 		r.AttrInt("year")
-		// r.BelongsTo("author") // author_id
 
 		r.BelongsTo("author", func(assoc *activerecord.BelongsTo) {
 			assoc.ForeignKey("author_id")
 		})
+		r.BelongsTo("publisher")
+	})
+
+	Publisher := activerecord.New("publisher", func(r *activerecord.R) {
+		r.AttrString("name")
+		r.HasMany("book")
 	})
 
 	Author.Connect(conn)
 	Book.Connect(conn)
+	Publisher.Connect(conn)
 
 	author1 := Author.New(Hash{"name": "Herman Melville"})
 	author2 := Author.New(Hash{"name": "Noah Harari"})
@@ -53,13 +59,21 @@ func TestActiveRecord_Insert(t *testing.T) {
 			PRIMARY KEY(id)
 		);
 		CREATE TABLE books (
-			uid  		INTEGER NOT NULL,
-			author_id	INTEGER,
-			year		INTEGER,
-			title		VARCHAR,
+			uid  		 INTEGER NOT NULL,
+			author_id	 INTEGER,
+			publisher_id INTEGER,
+			year		 INTEGER,
+			title		 VARCHAR,
 
-			PRIMARY KEY(uid)
+			PRIMARY KEY(uid),
 			FOREIGN KEY(author_id) REFERENCES author(id)
+		);
+		CREATE TABLE publishers (
+			id      INTEGER NOT NULL,
+			book_id INTEGER,
+			
+			PRIMARY KEY(id),
+			FOREIGN KEY(book_id) REFERENCES book(id)
 		);
 		`,
 	)
@@ -91,6 +105,7 @@ func TestActiveRecord_Insert(t *testing.T) {
 	t.Log(authors)
 
 	books := author1.Collection("book").Where("year > ?", 1846)
+	t.Logf("%#v", books)
 	bb, _ := books.ToA()
 	require.Len(t, bb, 2)
 

@@ -82,7 +82,9 @@ type associations struct {
 	values     map[string]*ActiveRecord
 }
 
-func newAssociations(recordName string, assocs associationsMap, reflection *Reflection) *associations {
+func newAssociations(
+	recordName string, assocs associationsMap, reflection *Reflection,
+) *associations {
 	return &associations{
 		recordName: recordName,
 		reflection: reflection,
