@@ -26,6 +26,10 @@ type IntValidators []IntValidator
 func ValidatesInt(vv ...IntValidator) IntValidators { return vv }
 
 func (vv IntValidators) Validate(v interface{}) error {
+	if v == nil {
+		return nil
+	}
+
 	var intval int
 	switch v := v.(type) {
 	case int:

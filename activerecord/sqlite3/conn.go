@@ -24,6 +24,10 @@ func Open(dataSourceName string) (*Conn, error) {
 	return &Conn{db: db}, nil
 }
 
+func (c *Conn) Close() error {
+	return c.db.Close()
+}
+
 func (c *Conn) Exec(ctx context.Context, sql string, args ...interface{}) error {
 	_, err := c.db.ExecContext(ctx, sql, args...)
 	return err

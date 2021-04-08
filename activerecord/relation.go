@@ -22,7 +22,7 @@ type R struct {
 	reflection *Reflection
 }
 
-// TableName sets the table name explicitely.
+// TableName sets the table name explicitly.
 //
 //	Vertex := activerecord.New("vertex", func(r *activerecord.R) {
 //		r.TableName("vertices")
@@ -308,6 +308,19 @@ func (rel *Relation) Where(cond string, arg interface{}) *Relation {
 	return newrel
 }
 
+// Select allows to specify a subset of fields to return.
+//
+// Method returns a new relation, where a set of attributes is limited by the
+// specified list.
+//
+//	Model.Select("field", "other_field")
+//	// #<Model id: 1, field: "value", other_field: "value">
+//
+// Accessing attributes of a Record that do not have fields retrieved by a select
+// except id with return nil.
+//
+//	model, _ := Model.Select("field").Find(1)
+//	model.Attribute("other_field") // Returns nil
 func (rel *Relation) Select(attrNames ...string) *Relation {
 	newrel := rel.Copy()
 
@@ -340,14 +353,17 @@ func (rel *Relation) Group(attrNames ...string) *Relation {
 	return newrel
 }
 
-func (rel *Relation) Joins(assocName string) *Relation {
+func (rel *Relation) Joins(assocNames ...string) *Relation {
 	newrel := rel.Copy()
-	association := newrel.ReflectOnAssociation(assocName)
-	if association == nil {
-		return newrel.empty()
-	}
 
-	newrel.query.join(association.Relation.Copy(), association.Association)
+	for _, assocName := range assocNames {
+		association := newrel.ReflectOnAssociation(assocName)
+		if association == nil {
+			return newrel.empty()
+		}
+
+		newrel.query.join(association.Relation.Copy(), association.Association)
+	}
 	return newrel
 }
 
@@ -371,6 +387,30 @@ func (rel *Relation) Find(id interface{}) (*ActiveRecord, error) {
 		return nil, &ErrRecordNotFound{PrimaryKey: rel.PrimaryKey(), ID: id}
 	}
 	return rel.Create(rows[0])
+}
+
+func (rel *Relation) InsertAll(params ...map[string]interface{}) (
+	rr []*ActiveRecord, err error,
+) {
+	rr = make([]*ActiveRecord, 0, len(params))
+	for _, h := range params {
+		rec, err := rel.Create(h)
+		if err != nil {
+			return nil, err
+		}
+
+		rr = append(rr, rec)
+	}
+
+	// TODO: Insert all in a transaction.
+	for i, rec := range rr {
+		rr[i], err = rec.Insert()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return rr, nil
 }
 
 // ToA converts Relation to array. The method access database to retrieve objects.

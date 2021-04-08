@@ -269,6 +269,11 @@ func (a *attributes) AccessAttribute(attrName string) (val interface{}) {
 	return a.values[attrName]
 }
 
+// Attribute is an alias for AccessAttribute.
+func (a *attributes) Attribute(attrName string) (val interface{}) {
+	return a.AccessAttribute(attrName)
+}
+
 // AttributePresent returns true if the specified attribute has been set by the user
 // or by a database and is not nil, otherwise false.
 func (a *attributes) AttributePresent(attrName string) bool {
