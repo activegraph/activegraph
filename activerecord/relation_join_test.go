@@ -70,19 +70,22 @@ func TestRelation_JoinsOK(t *testing.T) {
 		Hash{"name": "Herman Melville"}, Hash{"name": "Noah Harari"},
 	)
 	require.NoError(t, err)
+	require.Len(t, authors, 2)
 
-	pubs, err := Publisher.InsertAll(
+	publishers, err := Publisher.InsertAll(
 		Hash{"name": "MIT Press"}, Hash{"name": "CalTech Pub"},
 	)
 	require.NoError(t, err)
+	require.Len(t, publishers, 2)
 
 	books, err := Book.InsertAll(
-		Hash{"title": "Bill Budd", "author_id": authors[0].ID(), "publisher_id": pubs[0].ID()},
-		Hash{"title": "Moby Dick", "author_id": authors[0].ID(), "publisher_id": pubs[1].ID()},
-		Hash{"title": "Omoo", "author_id": authors[0].ID()},
-		Hash{"title": "Sapiens", "author_id": authors[1].ID(), "publisher_id": pubs[0].ID()},
+		Hash{"title": "Bill Budd", "author_id": 1, "publisher_id": 1},
+		Hash{"title": "Moby Dick", "author_id": 1, "publisher_id": 2},
+		Hash{"title": "Omoo", "author_id": 1},
+		Hash{"title": "Sapiens", "author_id": 2, "publisher_id": 1},
 	)
 	require.NoError(t, err)
+	require.Len(t, books, 4)
 
 	books, err = Book.Joins("author", "publisher").ToA()
 	require.NoError(t, err)
