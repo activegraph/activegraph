@@ -12,8 +12,20 @@ import (
 	"github.com/activegraph/activegraph/activerecord"
 )
 
+func init() {
+	activerecord.RegisterConnectionAdapter("sqlite3", Connect)
+}
+
 type Conn struct {
 	db *sql.DB
+}
+
+func Connect(conf activerecord.DatabaseConfig) (activerecord.Conn, error) {
+	db, err := sql.Open("sqlite3", conf.Database)
+	if err != nil {
+		return nil, err
+	}
+	return &Conn{db: db}, nil
 }
 
 func Open(dataSourceName string) (*Conn, error) {
@@ -110,6 +122,9 @@ func (c *Conn) ExecQuery(
 
 	if len(op.GroupValues) > 0 {
 		fmt.Fprintf(&buf, ` GROUP BY %s`, strings.Join(op.GroupValues, ", "))
+	}
+	if op.LimitValue != nil {
+		fmt.Fprintf(&buf, ` LIMIT %d`, *op.LimitValue)
 	}
 
 	fmt.Println(buf.String())

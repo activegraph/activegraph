@@ -8,14 +8,17 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/activegraph/activegraph/activerecord"
-	"github.com/activegraph/activegraph/activerecord/sqlite3"
+	_ "github.com/activegraph/activegraph/activerecord/sqlite3"
 )
 
 func TestRelation_JoinsOK(t *testing.T) {
-	conn, err := sqlite3.Open(":memory:")
+	conn, err := activerecord.EstablishConnection(activerecord.DatabaseConfig{
+		Adapter:  "sqlite3",
+		Database: ":memory:",
+	})
 	require.NoError(t, err)
 
-	defer conn.Close()
+	defer activerecord.RemoveConnection("primary")
 
 	err = conn.Exec(
 		context.TODO(), `
@@ -62,10 +65,6 @@ func TestRelation_JoinsOK(t *testing.T) {
 		r.HasMany("book")
 	})
 
-	Author.Connect(conn)
-	Book.Connect(conn)
-	Publisher.Connect(conn)
-
 	authors, err := Author.InsertAll(
 		Hash{"name": "Herman Melville"}, Hash{"name": "Noah Harari"},
 	)
@@ -90,9 +89,6 @@ func TestRelation_JoinsOK(t *testing.T) {
 	books, err = Book.Joins("author", "publisher").ToA()
 	require.NoError(t, err)
 	require.Len(t, books, 3)
-
-	// Close database connection and ensure the data is loaded.
-	conn.Close()
 
 	associations := map[int64]struct {
 		authorId    int64

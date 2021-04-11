@@ -7,14 +7,19 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/activegraph/activegraph/activerecord"
-	"github.com/activegraph/activegraph/activerecord/sqlite3"
+	_ "github.com/activegraph/activegraph/activerecord/sqlite3"
 )
 
 type Hash map[string]interface{}
 
 func TestActiveRecord_Insert(t *testing.T) {
-	conn, err := sqlite3.Open(":memory:")
+	conn, err := activerecord.EstablishConnection(activerecord.DatabaseConfig{
+		Adapter:  "sqlite3",
+		Database: ":memory:",
+	})
 	require.NoError(t, err)
+
+	defer activerecord.RemoveConnection("primary")
 
 	Author := activerecord.New("author", func(r *activerecord.R) {
 		r.AttrString("name")
@@ -37,10 +42,7 @@ func TestActiveRecord_Insert(t *testing.T) {
 		r.AttrString("name")
 		r.HasMany("book")
 	})
-
-	Author.Connect(conn)
-	Book.Connect(conn)
-	Publisher.Connect(conn)
+	_ = Publisher
 
 	author1 := Author.New(Hash{"name": "Herman Melville"})
 	author2 := Author.New(Hash{"name": "Noah Harari"})
