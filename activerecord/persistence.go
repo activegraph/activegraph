@@ -37,6 +37,7 @@ type QueryOperation struct {
 	Predicates   []Predicate
 	Dependencies []Dependency
 	GroupValues  []string
+	LimitValue   *int
 }
 
 type Conn interface {
@@ -44,7 +45,34 @@ type Conn interface {
 	//CommitTransaction(ctx context.Context) error
 	//RollbackTransaction(ctx context.Context) error
 
+	Exec(ctx context.Context, query string, args ...interface{}) error
 	ExecInsert(ctx context.Context, op *InsertOperation) (id interface{}, err error)
 	ExecDelete(ctx context.Context, op *DeleteOperation) (err error)
 	ExecQuery(ctx context.Context, op *QueryOperation, cb func(Hash) bool) (err error)
+
+	Close() error
+}
+
+type errConn struct {
+	err error
+}
+
+func (c *errConn) Exec(context.Context, string, ...interface{}) error {
+	return c.err
+}
+
+func (c *errConn) ExecInsert(context.Context, *InsertOperation) (interface{}, error) {
+	return nil, c.err
+}
+
+func (c *errConn) ExecDelete(context.Context, *DeleteOperation) error {
+	return c.err
+}
+
+func (c *errConn) ExecQuery(context.Context, *QueryOperation, func(Hash) bool) error {
+	return c.err
+}
+
+func (c *errConn) Close() error {
+	return c.err
 }

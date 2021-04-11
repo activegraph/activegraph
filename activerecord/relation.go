@@ -15,11 +15,12 @@ func (e *ErrUnknownPrimaryKey) Error() string {
 }
 
 type R struct {
-	tableName  string
-	primaryKey string
-	attrs      attributesMap
-	assocs     associationsMap
-	reflection *Reflection
+	tableName   string
+	primaryKey  string
+	attrs       attributesMap
+	assocs      associationsMap
+	reflection  *Reflection
+	connections *connectionHandler
 }
 
 // TableName sets the table name explicitly.
@@ -79,7 +80,9 @@ type Relation struct {
 	name      string
 	tableName string
 
-	conn  Conn
+	conn        Conn
+	connections *connectionHandler
+
 	scope *attributes
 	query *query
 	ctx   context.Context
@@ -97,9 +100,10 @@ func New(name string, defineRecord func(*R)) *Relation {
 
 func Create(name string, init func(*R)) (*Relation, error) {
 	r := R{
-		assocs:     make(associationsMap),
-		attrs:      make(attributesMap),
-		reflection: globalReflection,
+		assocs:      make(associationsMap),
+		attrs:       make(attributesMap),
+		reflection:  globalReflection,
+		connections: globalConnectionHandler,
 	}
 
 	init(&r)
@@ -132,6 +136,7 @@ func Create(name string, init func(*R)) (*Relation, error) {
 		tableName:    r.tableName,
 		scope:        scope,
 		associations: *assocs,
+		connections:  r.connections,
 		query:        new(query),
 	}
 	r.reflection.AddReflection(name, rel)
@@ -151,7 +156,8 @@ func (rel *Relation) Copy() *Relation {
 	return &Relation{
 		name:         rel.name,
 		tableName:    rel.tableName,
-		conn:         rel.conn,
+		conn:         rel.Connection(),
+		connections:  rel.connections,
 		scope:        rel.scope.copy(),
 		query:        rel.query.copy(),
 		ctx:          rel.ctx,
@@ -178,13 +184,27 @@ func (rel *Relation) Context() context.Context {
 }
 
 func (rel *Relation) WithContext(ctx context.Context) *Relation {
-	relCopy := rel.Copy()
-	relCopy.ctx = ctx
-	return relCopy
+	newrel := rel.Copy()
+	newrel.ctx = ctx
+	return newrel
 }
 
-func (rel *Relation) Connect(conn Conn) {
-	rel.conn = conn
+func (rel *Relation) Connect(conn Conn) *Relation {
+	newrel := rel.Copy()
+	newrel.conn = conn
+	return newrel
+}
+
+func (rel *Relation) Connection() Conn {
+	if rel.conn != nil {
+		return rel.conn
+	}
+
+	conn, err := rel.connections.RetrieveConnection(primaryConnectionName)
+	if err != nil {
+		return &errConn{err}
+	}
+	return conn
 }
 
 func (rel *Relation) New(params map[string]interface{}) *ActiveRecord {
@@ -205,7 +225,7 @@ func (rel *Relation) Create(params map[string]interface{}) (*ActiveRecord, error
 	return &ActiveRecord{
 		name:               rel.name,
 		tableName:          rel.tableName,
-		conn:               rel.conn,
+		conn:               rel.Connection(),
 		attributes:         *attributes,
 		associations:       *rel.associations.copy(),
 		associationRecords: make(map[string]*ActiveRecord),
@@ -248,6 +268,7 @@ func (rel *Relation) Each(fn func(*ActiveRecord) error) error {
 		Predicates:   rel.query.predicates,
 		Dependencies: rel.query.Dependencies(),
 		GroupValues:  rel.query.groupValues,
+		LimitValue:   rel.query.limitValue,
 	}
 
 	// When the scope is configured for the relation, add all attributes
@@ -265,7 +286,7 @@ func (rel *Relation) Each(fn func(*ActiveRecord) error) error {
 
 	var lasterr error
 
-	err := rel.conn.ExecQuery(rel.Context(), &op, func(h Hash) bool {
+	err := rel.Connection().ExecQuery(rel.Context(), &op, func(h Hash) bool {
 		rec, e := rel.ExtractRecord(h)
 		if lasterr = e; e != nil {
 			return false
@@ -353,6 +374,15 @@ func (rel *Relation) Group(attrNames ...string) *Relation {
 	return newrel
 }
 
+// Limit specifies a limit for the number of records to retrieve.
+//
+//	User.Limit(10) // Generated SQL has 'LIMIT 10'
+func (rel *Relation) Limit(num int) *Relation {
+	newrel := rel.Copy()
+	newrel.query.limit(num)
+	return newrel
+}
+
 func (rel *Relation) Joins(assocNames ...string) *Relation {
 	newrel := rel.Copy()
 
@@ -376,7 +406,7 @@ func (rel *Relation) Find(id interface{}) (*ActiveRecord, error) {
 
 	var rows []Hash
 
-	if err := rel.conn.ExecQuery(rel.Context(), &op, func(h Hash) bool {
+	if err := rel.Connection().ExecQuery(rel.Context(), &op, func(h Hash) bool {
 		rows = append(rows, h)
 		return true
 	}); err != nil {

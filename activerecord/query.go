@@ -14,6 +14,7 @@ type query struct {
 	predicates  []Predicate
 	groupValues []string
 	joinDeps    []joinDependency
+	limitValue  *int
 }
 
 func (q *query) copy() *query {
@@ -40,6 +41,10 @@ func (q *query) group(values ...string) {
 
 func (q *query) join(rel *Relation, assoc Association) {
 	q.joinDeps = append(q.joinDeps, joinDependency{rel, assoc})
+}
+
+func (q *query) limit(num int) {
+	q.limitValue = &num
 }
 
 func (q *query) Dependencies() (dd []Dependency) {
