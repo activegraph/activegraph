@@ -31,13 +31,9 @@ type Dependency struct {
 }
 
 type QueryOperation struct {
-	TableName    string
-	Columns      []string
-	Values       map[string]interface{}
-	Predicates   []Predicate
-	Dependencies []Dependency
-	GroupValues  []string
-	LimitValue   *int
+	Text    string
+	Args    []interface{}
+	Columns []string
 }
 
 type Conn interface {

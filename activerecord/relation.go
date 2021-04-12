@@ -84,7 +84,7 @@ type Relation struct {
 	connections *connectionHandler
 
 	scope *attributes
-	query *query
+	query *QueryBuilder
 	ctx   context.Context
 
 	associations
@@ -137,7 +137,7 @@ func Create(name string, init func(*R)) (*Relation, error) {
 		scope:        scope,
 		associations: *assocs,
 		connections:  r.connections,
-		query:        new(query),
+		query:        &QueryBuilder{from: r.tableName},
 	}
 	r.reflection.AddReflection(name, rel)
 
@@ -261,44 +261,30 @@ func (rel *Relation) ColumnNames() []string {
 }
 
 func (rel *Relation) Each(fn func(*ActiveRecord) error) error {
-	op := QueryOperation{
-		TableName:    rel.tableName,
-		Columns:      rel.ColumnNames(),
-		Values:       make(map[string]interface{}),
-		Predicates:   rel.query.predicates,
-		Dependencies: rel.query.Dependencies(),
-		GroupValues:  rel.query.groupValues,
-		LimitValue:   rel.query.limitValue,
-	}
-
-	// When the scope is configured for the relation, add all attributes
-	// to the list of query operation, so only neccessary subset of records
-	// are returned to the caller.
-	rel.scope.each(func(name string, value interface{}) {
-		op.Values[name] = value
-	})
+	q := rel.query.copy()
+	q.Select(rel.ColumnNames()...)
 
 	// Include all join dependencies into the query with fully-qualified column
 	// names, so each part of the request can be extracted individually.
-	for _, dep := range rel.query.joinDeps {
-		op.Columns = append(op.Columns, dep.Relation.ColumnNames()...)
+	for _, join := range rel.query.joinValues {
+		q.Select(join.Relation.ColumnNames()...)
 	}
 
 	var lasterr error
 
-	err := rel.Connection().ExecQuery(rel.Context(), &op, func(h Hash) bool {
+	err := rel.Connection().ExecQuery(rel.Context(), q.Operation(), func(h Hash) bool {
 		rec, e := rel.ExtractRecord(h)
 		if lasterr = e; e != nil {
 			return false
 		}
 
-		for _, dep := range rel.query.joinDeps {
-			arec, e := dep.Relation.ExtractRecord(h)
+		for _, join := range rel.query.joinValues {
+			arec, e := join.Relation.ExtractRecord(h)
 			if lasterr = e; e != nil {
 				return false
 			}
 
-			e = rec.AssignAssociation(dep.Relation.Name(), arec)
+			e = rec.AssignAssociation(join.Relation.Name(), arec)
 			if lasterr = e; e != nil {
 				return false
 			}
@@ -322,9 +308,10 @@ func (rel *Relation) Where(cond string, arg interface{}) *Relation {
 	// When the condition is a regular column, pass it through the regular
 	// column comparison instead of query chain predicates.
 	if newrel.scope.HasAttribute(cond) {
-		newrel.scope.AssignAttribute(cond, arg)
+		// newrel.scope.AssignAttribute(cond, arg)
+		newrel.query.Where(fmt.Sprintf("%s = ?", cond), arg)
 	} else {
-		newrel.query.where(cond, arg)
+		newrel.query.Where(cond, arg)
 	}
 	return newrel
 }
@@ -370,7 +357,7 @@ func (rel *Relation) Group(attrNames ...string) *Relation {
 		return newrel.empty()
 	}
 
-	newrel.query.group(attrNames...)
+	newrel.query.Group(attrNames...)
 	return newrel
 }
 
@@ -379,7 +366,7 @@ func (rel *Relation) Group(attrNames ...string) *Relation {
 //	User.Limit(10) // Generated SQL has 'LIMIT 10'
 func (rel *Relation) Limit(num int) *Relation {
 	newrel := rel.Copy()
-	newrel.query.limit(num)
+	newrel.query.Limit(num)
 	return newrel
 }
 
@@ -392,21 +379,21 @@ func (rel *Relation) Joins(assocNames ...string) *Relation {
 			return newrel.empty()
 		}
 
-		newrel.query.join(association.Relation.Copy(), association.Association)
+		newrel.query.Join(association.Relation.Copy(), association.Association)
 	}
 	return newrel
 }
 
 func (rel *Relation) Find(id interface{}) (*ActiveRecord, error) {
-	op := QueryOperation{
-		TableName: rel.tableName,
-		Columns:   rel.scope.AttributeNames(),
-		Values:    map[string]interface{}{rel.PrimaryKey(): id},
-	}
+	var q QueryBuilder
+	q.From(rel.TableName())
+	q.Select(rel.scope.AttributeNames()...)
+	// TODO: consider using unified approach.
+	q.Where(fmt.Sprintf("%s = ?", rel.PrimaryKey()), id)
 
 	var rows []Hash
 
-	if err := rel.Connection().ExecQuery(rel.Context(), &op, func(h Hash) bool {
+	if err := rel.Connection().ExecQuery(rel.Context(), q.Operation(), func(h Hash) bool {
 		rows = append(rows, h)
 		return true
 	}); err != nil {
@@ -455,4 +442,12 @@ func (rel *Relation) ToA() ([]*ActiveRecord, error) {
 	}
 
 	return rr, nil
+}
+
+// ToSQL returns sql statement for the relation.
+//
+//	User.Where("name", "Oscar").ToSQL()
+//	// SELECT * FROM "users" WHERE "name" = ?
+func (rel *Relation) ToSQL() string {
+	return rel.query.String()
 }
