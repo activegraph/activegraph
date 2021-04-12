@@ -99,36 +99,8 @@ func (c *Conn) ExecQuery(
 ) (
 	err error,
 ) {
-	var buf strings.Builder
-	fmt.Fprintf(&buf, `SELECT %s FROM "%s"`, strings.Join(op.Columns, ", "), op.TableName)
-
-	for _, dep := range op.Dependencies {
-		fmt.Fprintf(&buf, ` INNER JOIN "%s" ON `, dep.TableName)
-		fmt.Fprintf(&buf, `%s.%s = %s.%s `, op.TableName, dep.ForeignKey, dep.TableName, dep.PrimaryKey)
-	}
-
-	if len(op.Values)+len(op.Predicates) > 0 {
-		fmt.Fprintf(&buf, ` WHERE true`)
-	}
-	for col, val := range op.Values {
-		fmt.Fprintf(&buf, ` AND "%s" = '%v'`, col, val)
-	}
-
-	var args []interface{}
-	for _, pred := range op.Predicates {
-		fmt.Fprintf(&buf, ` AND (%s)`, pred.Cond)
-		args = append(args, pred.Args...)
-	}
-
-	if len(op.GroupValues) > 0 {
-		fmt.Fprintf(&buf, ` GROUP BY %s`, strings.Join(op.GroupValues, ", "))
-	}
-	if op.LimitValue != nil {
-		fmt.Fprintf(&buf, ` LIMIT %d`, *op.LimitValue)
-	}
-
-	fmt.Println(buf.String())
-	rws, err := c.db.QueryContext(ctx, buf.String(), args...)
+	fmt.Println(op.Text, op.Args)
+	rws, err := c.db.QueryContext(ctx, op.Text, op.Args...)
 	if err != nil {
 		return err
 	}

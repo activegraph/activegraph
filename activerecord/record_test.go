@@ -108,8 +108,9 @@ func TestActiveRecord_Insert(t *testing.T) {
 
 	books := author1.Collection("book").Where("year > ?", 1846)
 	t.Logf("%#v", books)
-	bb, _ := books.ToA()
-	require.Len(t, bb, 2)
+	bb, err := books.ToA()
+	require.NoError(t, err)
+	require.Len(t, bb, 3)
 
 	bb, _ = books.Where("year", 1851).ToA()
 	t.Log(bb)
