@@ -2,6 +2,7 @@ package activerecord_test
 
 import (
 	"context"
+	"os"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -14,10 +15,11 @@ import (
 func TestRelation_JoinsOK(t *testing.T) {
 	conn, err := activerecord.EstablishConnection(activerecord.DatabaseConfig{
 		Adapter:  "sqlite3",
-		Database: ":memory:",
+		Database: t.Name() + ".db",
 	})
 	require.NoError(t, err)
 
+	defer os.Remove(t.Name() + ".db")
 	defer activerecord.RemoveConnection("primary")
 
 	err = conn.Exec(
