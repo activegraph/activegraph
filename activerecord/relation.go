@@ -91,14 +91,14 @@ type Relation struct {
 }
 
 func New(name string, defineRecord func(*R)) *Relation {
-	schema, err := Create(name, defineRecord)
+	schema, err := Initialize(name, defineRecord)
 	if err != nil {
 		panic(err)
 	}
 	return schema
 }
 
-func Create(name string, init func(*R)) (*Relation, error) {
+func Initialize(name string, init func(*R)) (*Relation, error) {
 	r := R{
 		assocs:      make(associationsMap),
 		attrs:       make(attributesMap),
@@ -208,14 +208,14 @@ func (rel *Relation) Connection() Conn {
 }
 
 func (rel *Relation) New(params map[string]interface{}) *ActiveRecord {
-	rec, err := rel.Create(params)
+	rec, err := rel.Initialize(params)
 	if err != nil {
 		panic(err)
 	}
 	return rec
 }
 
-func (rel *Relation) Create(params map[string]interface{}) (*ActiveRecord, error) {
+func (rel *Relation) Initialize(params map[string]interface{}) (*ActiveRecord, error) {
 	attributes := rel.scope.clear()
 	err := attributes.AssignAttributes(params)
 	if err != nil {
@@ -232,6 +232,14 @@ func (rel *Relation) Create(params map[string]interface{}) (*ActiveRecord, error
 	}, nil
 }
 
+func (rel *Relation) Create(params map[string]interface{}) (*ActiveRecord, error) {
+	rec, err := rel.Initialize(params)
+	if err != nil {
+		return nil, err
+	}
+	return rec.Insert()
+}
+
 func (rel *Relation) ExtractRecord(h Hash) (*ActiveRecord, error) {
 	var (
 		attrNames   = rel.scope.AttributeNames()
@@ -243,7 +251,7 @@ func (rel *Relation) ExtractRecord(h Hash) (*ActiveRecord, error) {
 		params[attrNames[i]] = h[colName]
 	}
 
-	return rel.Create(params)
+	return rel.Initialize(params)
 }
 
 // PrimaryKey returns the attribute name of the record's primary key.
@@ -403,7 +411,7 @@ func (rel *Relation) Find(id interface{}) (*ActiveRecord, error) {
 	if len(rows) != 1 {
 		return nil, &ErrRecordNotFound{PrimaryKey: rel.PrimaryKey(), ID: id}
 	}
-	return rel.Create(rows[0])
+	return rel.Initialize(rows[0])
 }
 
 func (rel *Relation) InsertAll(params ...map[string]interface{}) (
@@ -411,7 +419,7 @@ func (rel *Relation) InsertAll(params ...map[string]interface{}) (
 ) {
 	rr = make([]*ActiveRecord, 0, len(params))
 	for _, h := range params {
-		rec, err := rel.Create(h)
+		rec, err := rel.Initialize(h)
 		if err != nil {
 			return nil, err
 		}
@@ -419,14 +427,16 @@ func (rel *Relation) InsertAll(params ...map[string]interface{}) (
 		rr = append(rr, rec)
 	}
 
-	// TODO: Insert all in a transaction.
-	for i, rec := range rr {
-		rr[i], err = rec.Insert()
-		if err != nil {
-			return nil, err
+	if err = rel.connections.Transaction(rel.Context(), func() error {
+		for i, rec := range rr {
+			if rr[i], err = rec.Insert(); err != nil {
+				return err
+			}
 		}
+		return nil
+	}); err != nil {
+		return nil, err
 	}
-
 	return rr, nil
 }
 

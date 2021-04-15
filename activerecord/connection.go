@@ -1,8 +1,12 @@
 package activerecord
 
 import (
+	"context"
 	"fmt"
 	"sync"
+
+	"github.com/activegraph/activegraph/internal"
+	"github.com/pkg/errors"
 )
 
 const (
@@ -52,14 +56,16 @@ type ConnectionAdapter func(DatabaseConfig) (Conn, error)
 // adapters registration routine.
 type connectionHandler struct {
 	adapters map[string]ConnectionAdapter
-	pool     map[string]Conn
+	conns    map[string]Conn
+	tx       map[uint64]Conn
 	mu       sync.RWMutex
 }
 
 func newConnectionHandler() *connectionHandler {
 	return &connectionHandler{
 		adapters: make(map[string]ConnectionAdapter),
-		pool:     make(map[string]Conn),
+		conns:    make(map[string]Conn),
+		tx:       make(map[uint64]Conn),
 	}
 }
 
@@ -73,6 +79,46 @@ func (h *connectionHandler) RegisterConnectionAdapter(
 	return nil
 }
 
+func (h *connectionHandler) ConnectionSpecificationName(name string) string {
+	return fmt.Sprintf("%s/%d", name, internal.GoroutineID())
+}
+
+func (h *connectionHandler) Transaction(ctx context.Context, fn func() error) error {
+	conn, err := h.RetrieveConnection(primaryConnectionName)
+	if err != nil {
+		return err
+	}
+
+	conn, err = conn.BeginTransaction(ctx)
+	if err != nil {
+		return err
+	}
+
+	// Return the connection back to the pool. From that moment, all database
+	// operations for this connection will be finished with an error.
+	defer conn.Close()
+
+	goroutineID := internal.GoroutineID()
+	h.mu.Lock()
+	h.tx[goroutineID] = conn
+	h.mu.Unlock()
+
+	defer func() {
+		h.mu.Lock()
+		defer h.mu.Unlock()
+		delete(h.tx, goroutineID)
+	}()
+
+	if err = fn(); err != nil {
+		if e := conn.RollbackTransaction(ctx); e != nil {
+			err = errors.WithMessage(err, e.Error())
+		}
+		return err
+	}
+
+	return conn.CommitTransaction(ctx)
+}
+
 func (h *connectionHandler) EstablishConnection(c DatabaseConfig) (Conn, error) {
 	newConnection, ok := h.adapters[c.Adapter]
 	if !ok {
@@ -84,18 +130,18 @@ func (h *connectionHandler) EstablishConnection(c DatabaseConfig) (Conn, error) 
 		return nil, err
 	}
 
-	h.mu.Lock()
-	defer h.mu.Unlock()
-
 	if c.Name == "" {
 		c.Name = primaryConnectionName
 	}
 
-	if _, dup := h.pool[c.Name]; dup {
-		return nil, fmt.Errorf("connection %q established", c.Name)
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
+	if _, dup := h.conns[c.Name]; dup {
+		return nil, fmt.Errorf("connection %q already established", c.Name)
 	}
 
-	h.pool[c.Name] = conn
+	h.conns[c.Name] = conn
 	return conn, nil
 }
 
@@ -103,7 +149,12 @@ func (h *connectionHandler) RetrieveConnection(name string) (Conn, error) {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 
-	conn, ok := h.pool[name]
+	tx, ok := h.tx[internal.GoroutineID()]
+	if ok {
+		return tx, nil
+	}
+
+	conn, ok := h.conns[name]
 	if !ok {
 		return nil, &ErrConnectionNotEstablished{Name: name}
 	}
@@ -114,12 +165,12 @@ func (h *connectionHandler) RemoveConnection(name string) error {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
-	conn, ok := h.pool[name]
+	conn, ok := h.conns[name]
 	if !ok {
 		return &ErrConnectionNotEstablished{Name: name}
 	}
 
-	delete(h.pool, name)
+	delete(h.conns, name)
 	return conn.Close()
 }
 
@@ -153,4 +204,10 @@ func RetrieveConnection(name string) (Conn, error) {
 
 func RemoveConnection(name string) error {
 	return globalConnectionHandler.RemoveConnection(name)
+}
+
+// Transaction runs the given block in a database transaction, and returns the
+// result of the function.
+func Transaction(ctx context.Context, fn func() error) error {
+	return globalConnectionHandler.Transaction(ctx, fn)
 }

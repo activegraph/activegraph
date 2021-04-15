@@ -37,9 +37,9 @@ type QueryOperation struct {
 }
 
 type Conn interface {
-	//BeginTransaction(ctx context.Context) error
-	//CommitTransaction(ctx context.Context) error
-	//RollbackTransaction(ctx context.Context) error
+	BeginTransaction(ctx context.Context) (Conn, error)
+	CommitTransaction(ctx context.Context) error
+	RollbackTransaction(ctx context.Context) error
 
 	Exec(ctx context.Context, query string, args ...interface{}) error
 	ExecInsert(ctx context.Context, op *InsertOperation) (id interface{}, err error)
@@ -51,6 +51,18 @@ type Conn interface {
 
 type errConn struct {
 	err error
+}
+
+func (c *errConn) BeginTransaction(ctx context.Context) (Conn, error) {
+	return nil, c.err
+}
+
+func (c *errConn) CommitTransaction(ctx context.Context) error {
+	return c.err
+}
+
+func (c *errConn) RollbackTransaction(ctx context.Context) error {
+	return c.err
 }
 
 func (c *errConn) Exec(context.Context, string, ...interface{}) error {
