@@ -11,11 +11,11 @@ type ActionCreate interface {
 }
 
 type ActionEdit interface {
-	Edit(ctx context.Context, id string, input Params) (ActiveModel, error)
+	Edit(ctx context.Context, id interface{}, input Params) (ActiveModel, error)
 }
 
 type ActionShow interface {
-	Show(ctx context.Context, id string) (ActiveModel, error)
+	Show(ctx context.Context, id interface{}) (ActiveModel, error)
 }
 
 type ActionIndex interface {
@@ -23,7 +23,7 @@ type ActionIndex interface {
 }
 
 type ActionDestroy interface {
-	Destroy(ctx context.Context, id string) error
+	Destroy(ctx context.Context, id interface{}) error
 }
 
 type ActionController interface {
