@@ -1,22 +1,26 @@
 package actioncontroller
 
 import (
+	"github.com/activegraph/activegraph/actiondispatch"
 	"github.com/activegraph/activegraph/activerecord"
 )
 
-type Create struct {
+type Action interface {
+	Process(*actiondispatch.Request, *actiondispatch.Response) error
 }
 
-type CreateAction func(*Create) (*activerecord.ActiveRecord, error)
+type ActionFunc func(*actiondispatch.Request, *actiondispatch.Response) error
 
-type Update struct {
+func (fn ActionFunc) Process(r *actiondispatch.Request, resp *actiondispatch.Response) error {
+	return fn(r, resp)
 }
-
-type UpdateAction func(*Update) (*activerecord.ActiveRecord, error)
 
 type C struct {
-	create CreateAction
-	update UpdateAction
+	create  Action
+	update  Action
+	show    Action
+	index   Action
+	destroy Action
 }
 
 func (c *C) BeforeAction(only ...string) {
@@ -28,24 +32,28 @@ func (c *C) AfterAction() {
 func (c *C) AroundAction() {
 }
 
-func (c *C) Create(a CreateAction) {
+func (c *C) Create(a ActionFunc) {
 	c.create = a
 }
 
-func (c *C) Update(a UpdateAction) {
+func (c *C) Update(a ActionFunc) {
 	c.update = a
 }
 
-func (c *C) Show() {
+func (c *C) Show(a ActionFunc) {
+	c.show = a
 }
 
-func (c *C) Index() {
+func (c *C) Index(a ActionFunc) {
+	c.index = a
 }
 
-func (c *C) Destroy() {
+func (c *C) Destroy(a ActionFunc) {
+	c.destroy = a
 }
 
 type ActionController struct {
+	actions map[string]Action
 }
 
 func New(rel *activerecord.Relation, init func(*C)) *ActionController {
@@ -57,8 +65,20 @@ func New(rel *activerecord.Relation, init func(*C)) *ActionController {
 }
 
 func Initialize(rel *activerecord.Relation, init func(*C)) (*ActionController, error) {
-	c := C{}
+	var c C
 	init(&c)
 
 	return &ActionController{}, nil
+}
+
+func (c *ActionController) Process(actionName string) {
+}
+
+func (c *ActionController) HasAction(actionName string) bool {
+	_, ok := c.actions[actionName]
+	return ok
+}
+
+func (c *ActionController) ActionMethods() []Action {
+	return nil
 }
