@@ -90,8 +90,8 @@ type Relation struct {
 	associations
 }
 
-func New(name string, defineRecord func(*R)) *Relation {
-	schema, err := Initialize(name, defineRecord)
+func New(name string, init func(*R)) *Relation {
+	schema, err := Initialize(name, init)
 	if err != nil {
 		panic(err)
 	}
