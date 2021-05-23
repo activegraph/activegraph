@@ -283,6 +283,13 @@ func (a *attributes) AttributePresent(attrName string) bool {
 	return a.values[attrName] != nil
 }
 
+func (a *attributes) AttributeForInspect(attrName string) Attribute {
+	if !a.HasAttribute(attrName) {
+		return nil
+	}
+	return a.keys[attrName]
+}
+
 // ExceptAttribute removes the specified attribute. Method returns error when attribute
 // is unknown.
 func (a *attributes) ExceptAttribute(attrName string) error {

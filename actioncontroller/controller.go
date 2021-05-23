@@ -2,7 +2,6 @@ package actioncontroller
 
 import (
 	"github.com/activegraph/activegraph/actiondispatch"
-	"github.com/activegraph/activegraph/activerecord"
 )
 
 type Action interface {
@@ -56,15 +55,15 @@ type ActionController struct {
 	actions map[string]Action
 }
 
-func New(rel *activerecord.Relation, init func(*C)) *ActionController {
-	c, err := Initialize(rel, init)
+func New(init func(*C)) *ActionController {
+	c, err := Initialize(init)
 	if err != nil {
 		panic(err)
 	}
 	return c
 }
 
-func Initialize(rel *activerecord.Relation, init func(*C)) (*ActionController, error) {
+func Initialize(init func(*C)) (*ActionController, error) {
 	var c C
 	init(&c)
 
