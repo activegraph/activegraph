@@ -324,6 +324,15 @@ func (rel *Relation) Where(cond string, arg interface{}) *Relation {
 	return newrel
 }
 
+// TODO: separate attribute assignment from attributes reflection.
+func (rel *Relation) AttributeNames() []string {
+	return rel.scope.AttributeNames()
+}
+
+func (rel *Relation) AttributeForInspect(attrName string) Attribute {
+	return rel.scope.AttributeForInspect(attrName)
+}
+
 // Select allows to specify a subset of fields to return.
 //
 // Method returns a new relation, where a set of attributes is limited by the
