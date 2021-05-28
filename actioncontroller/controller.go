@@ -4,22 +4,18 @@ import (
 	"github.com/activegraph/activegraph/actiondispatch"
 )
 
-type Action interface {
-	Process(*actiondispatch.Request, *actiondispatch.Response) error
-}
+type actionsMap map[string]actiondispatch.Action
 
-type ActionFunc func(*actiondispatch.Request, *actiondispatch.Response) error
-
-func (fn ActionFunc) Process(r *actiondispatch.Request, resp *actiondispatch.Response) error {
-	return fn(r, resp)
+func (m actionsMap) copy() actionsMap {
+	mm := make(actionsMap, len(m))
+	for name, action := range m {
+		mm[name] = action
+	}
+	return mm
 }
 
 type C struct {
-	create  Action
-	update  Action
-	show    Action
-	index   Action
-	destroy Action
+	actions actionsMap
 }
 
 func (c *C) BeforeAction(only ...string) {
@@ -31,28 +27,32 @@ func (c *C) AfterAction() {
 func (c *C) AroundAction() {
 }
 
-func (c *C) Create(a ActionFunc) {
-	c.create = a
+func (c *C) Action(name string, a actiondispatch.AnonymousAction) {
+	c.actions[name] = &actiondispatch.NamedAction{Name: name, AnonymousAction: a}
 }
 
-func (c *C) Update(a ActionFunc) {
-	c.update = a
+func (c *C) Create(a actiondispatch.AnonymousAction) {
+	c.Action(actiondispatch.ActionCreate, a)
 }
 
-func (c *C) Show(a ActionFunc) {
-	c.show = a
+func (c *C) Update(a actiondispatch.AnonymousAction) {
+	c.Action(actiondispatch.ActionUpdate, a)
 }
 
-func (c *C) Index(a ActionFunc) {
-	c.index = a
+func (c *C) Show(a actiondispatch.AnonymousAction) {
+	c.Action(actiondispatch.ActionShow, a)
 }
 
-func (c *C) Destroy(a ActionFunc) {
-	c.destroy = a
+func (c *C) Index(a actiondispatch.AnonymousAction) {
+	c.Action(actiondispatch.ActionIndex, a)
+}
+
+func (c *C) Destroy(a actiondispatch.AnonymousAction) {
+	c.Action(actiondispatch.ActionDestroy, a)
 }
 
 type ActionController struct {
-	actions map[string]Action
+	actions actionsMap
 }
 
 func New(init func(*C)) *ActionController {
@@ -64,13 +64,12 @@ func New(init func(*C)) *ActionController {
 }
 
 func Initialize(init func(*C)) (*ActionController, error) {
-	var c C
+	c := C{actions: make(actionsMap)}
 	init(&c)
 
-	return &ActionController{}, nil
-}
-
-func (c *ActionController) Process(actionName string) {
+	return &ActionController{
+		actions: c.actions.copy(),
+	}, nil
 }
 
 func (c *ActionController) HasAction(actionName string) bool {
@@ -78,6 +77,10 @@ func (c *ActionController) HasAction(actionName string) bool {
 	return ok
 }
 
-func (c *ActionController) ActionMethods() []Action {
-	return nil
+func (c *ActionController) ActionMethods() []actiondispatch.Action {
+	actions := make([]actiondispatch.Action, 0, len(c.actions))
+	for _, action := range c.actions {
+		actions = append(actions, action)
+	}
+	return actions
 }
