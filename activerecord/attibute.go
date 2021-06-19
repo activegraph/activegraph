@@ -290,6 +290,16 @@ func (a *attributes) AttributeForInspect(attrName string) Attribute {
 	return a.keys[attrName]
 }
 
+func (a *attributes) AttributesForInspect(attrNames ...string) []Attribute {
+	attrs := make([]Attribute, 0, len(attrNames))
+	for _, attrName := range attrNames {
+		if a.HasAttribute(attrName) {
+			attrs = append(attrs, a.keys[attrName])
+		}
+	}
+	return attrs
+}
+
 // ExceptAttribute removes the specified attribute. Method returns error when attribute
 // is unknown.
 func (a *attributes) ExceptAttribute(attrName string) error {

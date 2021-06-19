@@ -36,6 +36,5 @@ func (a *Application) ListenAndServe() error {
 		return err
 	}
 
-	http.Handle("/graphql", handler)
-	return http.ListenAndServe(":8080", nil)
+	return http.ListenAndServe(":3000", handler)
 }

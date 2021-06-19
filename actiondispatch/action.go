@@ -2,6 +2,8 @@ package actiondispatch
 
 import (
 	"context"
+
+	"github.com/activegraph/activegraph/activerecord"
 )
 
 type Context struct {
@@ -12,6 +14,7 @@ type Context struct {
 
 type Action interface {
 	ActionName() string
+	ActionRequest() []activerecord.Attribute
 	Process(ctx *Context) error
 }
 
@@ -22,8 +25,13 @@ func (fn AnonymousAction) Process(ctx *Context) error {
 }
 
 type NamedAction struct {
-	Name string
+	Name    string
+	Request []activerecord.Attribute
 	AnonymousAction
+}
+
+func (a *NamedAction) ActionRequest() []activerecord.Attribute {
+	return a.Request
 }
 
 func (a *NamedAction) ActionName() string {

@@ -333,6 +333,10 @@ func (rel *Relation) AttributeForInspect(attrName string) Attribute {
 	return rel.scope.AttributeForInspect(attrName)
 }
 
+func (rel *Relation) AttributesForInspect(attrNames ...string) []Attribute {
+	return rel.scope.AttributesForInspect(attrNames...)
+}
+
 // Select allows to specify a subset of fields to return.
 //
 // Method returns a new relation, where a set of attributes is limited by the
