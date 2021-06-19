@@ -61,6 +61,44 @@ func (m *Mapper) newShowAction(
 	}
 }
 
+func (m *Mapper) newUpdateAction(
+	model actiondispatch.AbstractModel, output graphql.Output, action actiondispatch.Action,
+) (string, *graphql.Field) {
+	name := "update" + strings.Title(model.Name())
+
+	objFields := graphql.InputObjectConfigFieldMap{
+		model.PrimaryKey(): &graphql.InputObjectFieldConfig{
+			Type: typeconv(model.AttributeForInspect(model.PrimaryKey()).CastType()),
+		},
+	}
+	for _, attr := range action.ActionRequest() {
+		objFields[attr.AttributeName()] = &graphql.InputObjectFieldConfig{
+			Type: typeconv(attr.CastType()),
+		}
+	}
+
+	args := graphql.FieldConfigArgument{
+		"input": &graphql.ArgumentConfig{
+			Type: graphql.NewInputObject(graphql.InputObjectConfig{
+				Name:   "Update" + strings.Title(model.Name()) + "Input",
+				Fields: objFields,
+			}),
+		},
+	}
+
+	return name, &graphql.Field{
+		Name: name,
+		Args: args,
+		Type: output,
+		Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+			action.Process(&actiondispatch.Context{
+				Params: p.Args, Context: p.Context,
+			})
+			return nil, nil
+		},
+	}
+}
+
 func (m *Mapper) newDestroyAction(
 	model actiondispatch.AbstractModel, output graphql.Output, action actiondispatch.Action,
 ) (string, *graphql.Field) {
@@ -103,6 +141,9 @@ func (m *Mapper) Map() (http.Handler, error) {
 			case actiondispatch.ActionShow:
 				name, query := m.newShowAction(resource.model, output, action)
 				queries[name] = query
+			case actiondispatch.ActionUpdate:
+				name, mutation := m.newUpdateAction(resource.model, output, action)
+				mutations[name] = mutation
 			case actiondispatch.ActionDestroy:
 				name, mutation := m.newDestroyAction(resource.model, output, action)
 				mutations[name] = mutation
