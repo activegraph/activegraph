@@ -88,6 +88,7 @@ type Relation struct {
 	ctx   context.Context
 
 	associations
+	AttributeMethods
 }
 
 func New(name string, init func(*R)) *Relation {
@@ -132,12 +133,13 @@ func Initialize(name string, init func(*R)) (*Relation, error) {
 
 	// Create the model schema, and register it within a reflection instance.
 	rel := &Relation{
-		name:         name,
-		tableName:    r.tableName,
-		scope:        scope,
-		associations: *assocs,
-		connections:  r.connections,
-		query:        &QueryBuilder{from: r.tableName},
+		name:             name,
+		tableName:        r.tableName,
+		scope:            scope,
+		associations:     *assocs,
+		connections:      r.connections,
+		query:            &QueryBuilder{from: r.tableName},
+		AttributeMethods: scope,
 	}
 	r.reflection.AddReflection(name, rel)
 
@@ -153,15 +155,18 @@ func (rel *Relation) Name() string {
 }
 
 func (rel *Relation) Copy() *Relation {
+	scope := rel.scope.copy()
+
 	return &Relation{
-		name:         rel.name,
-		tableName:    rel.tableName,
-		conn:         rel.Connection(),
-		connections:  rel.connections,
-		scope:        rel.scope.copy(),
-		query:        rel.query.copy(),
-		ctx:          rel.ctx,
-		associations: *rel.associations.copy(),
+		name:             rel.name,
+		tableName:        rel.tableName,
+		conn:             rel.Connection(),
+		connections:      rel.connections,
+		scope:            rel.scope.copy(),
+		query:            rel.query.copy(),
+		ctx:              rel.ctx,
+		associations:     *rel.associations.copy(),
+		AttributeMethods: scope,
 	}
 }
 
@@ -322,19 +327,6 @@ func (rel *Relation) Where(cond string, arg interface{}) *Relation {
 		newrel.query.Where(cond, arg)
 	}
 	return newrel
-}
-
-// TODO: separate attribute assignment from attributes reflection.
-func (rel *Relation) AttributeNames() []string {
-	return rel.scope.AttributeNames()
-}
-
-func (rel *Relation) AttributeForInspect(attrName string) Attribute {
-	return rel.scope.AttributeForInspect(attrName)
-}
-
-func (rel *Relation) AttributesForInspect(attrNames ...string) []Attribute {
-	return rel.scope.AttributesForInspect(attrNames...)
 }
 
 // Select allows to specify a subset of fields to return.

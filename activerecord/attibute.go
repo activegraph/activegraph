@@ -27,6 +27,22 @@ type Attribute interface {
 	Validator
 }
 
+type AttributeMethods interface {
+	AttributeNames() []string
+	HasAttribute(attrName string) bool
+	HasAttributes(attrNames ...string) bool
+	AttributeForInspect(attrName string) Attribute
+	AttributesForInspect(attrNames ...string) []Attribute
+}
+
+type AttributeAccessors interface {
+	Attribute(attrName string) (val interface{})
+	AttributePresent(attrName string) bool
+	AssignAttribute(attrName string, val interface{}) error
+	AssignAttributes(newAttributes map[string]interface{}) error
+	AccessAttribute(attrName string) (val interface{})
+}
+
 // PrimaryKey makes any specified attribute a primary key.
 type PrimaryKey struct {
 	Attribute

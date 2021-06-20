@@ -40,7 +40,9 @@ func (m *Mapper) Resources(
 func (m *Mapper) primaryKey(model actiondispatch.AbstractModel) graphql.FieldConfigArgument {
 	return graphql.FieldConfigArgument{
 		model.PrimaryKey(): &graphql.ArgumentConfig{
-			Type: typeconv(model.AttributeForInspect(model.PrimaryKey()).CastType()),
+			Type: graphql.NewNonNull(
+				typeconv(model.AttributeForInspect(model.PrimaryKey()).CastType()),
+			),
 		},
 	}
 }
@@ -62,15 +64,11 @@ func (m *Mapper) newShowAction(
 }
 
 func (m *Mapper) newUpdateAction(
-	model actiondispatch.AbstractModel, output graphql.Output, action actiondispatch.Action,
+	operation string, model actiondispatch.AbstractModel, output graphql.Output, action actiondispatch.Action,
 ) (string, *graphql.Field) {
-	name := "update" + strings.Title(model.Name())
+	name := operation + strings.Title(model.Name())
 
-	objFields := graphql.InputObjectConfigFieldMap{
-		model.PrimaryKey(): &graphql.InputObjectFieldConfig{
-			Type: typeconv(model.AttributeForInspect(model.PrimaryKey()).CastType()),
-		},
-	}
+	objFields := make(graphql.InputObjectConfigFieldMap, len(action.ActionRequest()))
 	for _, attr := range action.ActionRequest() {
 		objFields[attr.AttributeName()] = &graphql.InputObjectFieldConfig{
 			Type: typeconv(attr.CastType()),
@@ -78,11 +76,12 @@ func (m *Mapper) newUpdateAction(
 	}
 
 	args := graphql.FieldConfigArgument{
-		"input": &graphql.ArgumentConfig{
-			Type: graphql.NewInputObject(graphql.InputObjectConfig{
-				Name:   "Update" + strings.Title(model.Name()) + "Input",
+		model.PrimaryKey(): m.primaryKey(model)[model.PrimaryKey()],
+		model.Name(): &graphql.ArgumentConfig{
+			Type: graphql.NewNonNull(graphql.NewInputObject(graphql.InputObjectConfig{
+				Name:   strings.Title(operation) + strings.Title(model.Name()) + "Input",
 				Fields: objFields,
-			}),
+			})),
 		},
 	}
 
@@ -141,8 +140,8 @@ func (m *Mapper) Map() (http.Handler, error) {
 			case actiondispatch.ActionShow:
 				name, query := m.newShowAction(resource.model, output, action)
 				queries[name] = query
-			case actiondispatch.ActionUpdate:
-				name, mutation := m.newUpdateAction(resource.model, output, action)
+			case actiondispatch.ActionUpdate, actiondispatch.ActionCreate:
+				name, mutation := m.newUpdateAction(action.ActionName(), resource.model, output, action)
 				mutations[name] = mutation
 			case actiondispatch.ActionDestroy:
 				name, mutation := m.newDestroyAction(resource.model, output, action)
