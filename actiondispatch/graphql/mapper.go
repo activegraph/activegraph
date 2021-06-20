@@ -47,10 +47,34 @@ func (m *Mapper) primaryKey(model actiondispatch.AbstractModel) graphql.FieldCon
 	}
 }
 
+func (m *Mapper) newIndexAction(
+	model actiondispatch.AbstractModel, output graphql.Output, action actiondispatch.Action,
+) *graphql.Field {
+
+	args := make(graphql.FieldConfigArgument, len(action.ActionRequest()))
+	for _, attr := range action.ActionRequest() {
+		args[attr.AttributeName()] = &graphql.ArgumentConfig{
+			Type: typeconv(attr.CastType()),
+		}
+	}
+
+	return &graphql.Field{
+		Name: model.Name() + "s",
+		Args: args,
+		Type: graphql.NewList(output),
+		Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+			action.Process(&actiondispatch.Context{
+				Params: p.Args, Context: p.Context,
+			})
+			return nil, nil
+		},
+	}
+}
+
 func (m *Mapper) newShowAction(
 	model actiondispatch.AbstractModel, output graphql.Output, action actiondispatch.Action,
-) (string, *graphql.Field) {
-	return model.Name(), &graphql.Field{
+) *graphql.Field {
+	return &graphql.Field{
 		Name: model.Name(),
 		Args: m.primaryKey(model),
 		Type: output,
@@ -65,8 +89,7 @@ func (m *Mapper) newShowAction(
 
 func (m *Mapper) newUpdateAction(
 	operation string, model actiondispatch.AbstractModel, output graphql.Output, action actiondispatch.Action,
-) (string, *graphql.Field) {
-	name := operation + strings.Title(model.Name())
+) *graphql.Field {
 
 	objFields := make(graphql.InputObjectConfigFieldMap, len(action.ActionRequest()))
 	for _, attr := range action.ActionRequest() {
@@ -85,8 +108,8 @@ func (m *Mapper) newUpdateAction(
 		},
 	}
 
-	return name, &graphql.Field{
-		Name: name,
+	return &graphql.Field{
+		Name: operation + strings.Title(model.Name()),
 		Args: args,
 		Type: output,
 		Resolve: func(p graphql.ResolveParams) (interface{}, error) {
@@ -100,11 +123,9 @@ func (m *Mapper) newUpdateAction(
 
 func (m *Mapper) newDestroyAction(
 	model actiondispatch.AbstractModel, output graphql.Output, action actiondispatch.Action,
-) (string, *graphql.Field) {
-	name := "delete" + strings.Title(model.Name())
-
-	return name, &graphql.Field{
-		Name: name,
+) *graphql.Field {
+	return &graphql.Field{
+		Name: "delete" + strings.Title(model.Name()),
 		Args: m.primaryKey(model),
 		Type: output,
 		Resolve: func(p graphql.ResolveParams) (interface{}, error) {
@@ -137,15 +158,18 @@ func (m *Mapper) Map() (http.Handler, error) {
 
 		for _, action := range resource.controller.ActionMethods() {
 			switch action.ActionName() {
+			case actiondispatch.ActionIndex:
+				query := m.newIndexAction(resource.model, output, action)
+				queries[query.Name] = query
 			case actiondispatch.ActionShow:
-				name, query := m.newShowAction(resource.model, output, action)
-				queries[name] = query
+				query := m.newShowAction(resource.model, output, action)
+				queries[query.Name] = query
 			case actiondispatch.ActionUpdate, actiondispatch.ActionCreate:
-				name, mutation := m.newUpdateAction(action.ActionName(), resource.model, output, action)
-				mutations[name] = mutation
+				mutation := m.newUpdateAction(action.ActionName(), resource.model, output, action)
+				mutations[mutation.Name] = mutation
 			case actiondispatch.ActionDestroy:
-				name, mutation := m.newDestroyAction(resource.model, output, action)
-				mutations[name] = mutation
+				mutation := m.newDestroyAction(resource.model, output, action)
+				mutations[mutation.Name] = mutation
 			}
 		}
 	}
