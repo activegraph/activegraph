@@ -1,4 +1,4 @@
-package actiondispatch
+package actioncontroller
 
 type Request struct {
 }

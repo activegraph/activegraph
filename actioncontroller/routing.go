@@ -1,4 +1,4 @@
-package actiondispatch
+package actioncontroller
 
 import (
 	"net/http"

@@ -1,11 +1,10 @@
 package actioncontroller
 
 import (
-	"github.com/activegraph/activegraph/actiondispatch"
 	"github.com/activegraph/activegraph/activerecord"
 )
 
-type actionsMap map[string]*actiondispatch.NamedAction
+type actionsMap map[string]*NamedAction
 
 func (m actionsMap) copy() actionsMap {
 	mm := make(actionsMap, len(m))
@@ -29,8 +28,8 @@ func (c *C) AfterAction() {
 func (c *C) AroundAction() {
 }
 
-func (c *C) Action(name string, a actiondispatch.AnonymousAction) {
-	c.actions[name] = &actiondispatch.NamedAction{Name: name, AnonymousAction: a}
+func (c *C) Action(name string, a AnonymousAction) {
+	c.actions[name] = &NamedAction{Name: name, AnonymousAction: a}
 }
 
 func (c *C) Permit(params []activerecord.Attribute, names ...string) {
@@ -40,24 +39,24 @@ func (c *C) Permit(params []activerecord.Attribute, names ...string) {
 	}
 }
 
-func (c *C) Create(a actiondispatch.AnonymousAction) {
-	c.Action(actiondispatch.ActionCreate, a)
+func (c *C) Create(a AnonymousAction) {
+	c.Action(ActionCreate, a)
 }
 
-func (c *C) Update(a actiondispatch.AnonymousAction) {
-	c.Action(actiondispatch.ActionUpdate, a)
+func (c *C) Update(a AnonymousAction) {
+	c.Action(ActionUpdate, a)
 }
 
-func (c *C) Show(a actiondispatch.AnonymousAction) {
-	c.Action(actiondispatch.ActionShow, a)
+func (c *C) Show(a AnonymousAction) {
+	c.Action(ActionShow, a)
 }
 
-func (c *C) Index(a actiondispatch.AnonymousAction) {
-	c.Action(actiondispatch.ActionIndex, a)
+func (c *C) Index(a AnonymousAction) {
+	c.Action(ActionIndex, a)
 }
 
-func (c *C) Destroy(a actiondispatch.AnonymousAction) {
-	c.Action(actiondispatch.ActionDestroy, a)
+func (c *C) Destroy(a AnonymousAction) {
+	c.Action(ActionDestroy, a)
 }
 
 type ActionController struct {
@@ -90,8 +89,8 @@ func (c *ActionController) HasAction(actionName string) bool {
 	return ok
 }
 
-func (c *ActionController) ActionMethods() []actiondispatch.Action {
-	actions := make([]actiondispatch.Action, 0, len(c.actions))
+func (c *ActionController) ActionMethods() []Action {
+	actions := make([]Action, 0, len(c.actions))
 	for _, action := range c.actions {
 		actions = append(actions, action)
 	}

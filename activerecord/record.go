@@ -27,6 +27,10 @@ type ActiveRecord struct {
 	associationRecords map[string]*ActiveRecord
 }
 
+func (r *ActiveRecord) ToHash() map[string]interface{} {
+	return r.attributes.values
+}
+
 func (r *ActiveRecord) Name() string {
 	return r.name
 }
