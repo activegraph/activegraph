@@ -1,4 +1,4 @@
-package actiondispatch
+package actioncontroller
 
 import (
 	"context"
@@ -9,18 +9,23 @@ import (
 type Context struct {
 	context.Context
 
-	Params map[string]interface{}
+	Params Parameters
+}
+
+// Result defines a contract that represents the result of action method.
+type Result interface {
+	Execute(*Context) (interface{}, error)
 }
 
 type Action interface {
 	ActionName() string
 	ActionRequest() []activerecord.Attribute
-	Process(ctx *Context) error
+	Process(ctx *Context) Result
 }
 
-type AnonymousAction func(*Context) error
+type AnonymousAction func(*Context) Result
 
-func (fn AnonymousAction) Process(ctx *Context) error {
+func (fn AnonymousAction) Process(ctx *Context) Result {
 	return fn(ctx)
 }
 

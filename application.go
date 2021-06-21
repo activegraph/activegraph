@@ -3,16 +3,16 @@ package activegraph
 import (
 	"net/http"
 
-	"github.com/activegraph/activegraph/actiondispatch"
-	"github.com/activegraph/activegraph/actiondispatch/graphql"
+	"github.com/activegraph/activegraph/actioncontroller"
+	"github.com/activegraph/activegraph/actioncontroller/graphql"
 )
 
 type A struct {
-	actiondispatch.Mapper
+	actioncontroller.Mapper
 }
 
 type Application struct {
-	mapper actiondispatch.Mapper
+	mapper actioncontroller.Mapper
 }
 
 func New(init func(*A)) *Application {
