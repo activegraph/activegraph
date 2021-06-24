@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"strings"
+
+	"github.com/activegraph/activegraph/activesupport"
 )
 
 type ErrRecordNotFound struct {
@@ -11,8 +13,64 @@ type ErrRecordNotFound struct {
 	ID         interface{}
 }
 
-func (e *ErrRecordNotFound) Error() string {
+func (e ErrRecordNotFound) Error() string {
 	return fmt.Sprintf("record not found by %s = %v", e.PrimaryKey, e.ID)
+}
+
+type Result interface {
+	activesupport.Result
+
+	UnwrapRecord() *ActiveRecord
+
+	Insert() Result
+	Update() Result
+	Delete() Result
+
+	// TODO:
+	// Upsert() Record
+	// Destroy() Record
+
+	// AttributeMethods
+	// AttributeAccessors
+}
+
+func Return(r *ActiveRecord, err error) Result {
+	return result{activesupport.Return(r, err)}
+}
+
+func Ok(r *ActiveRecord) Result {
+	return result{activesupport.Ok(r)}
+}
+
+func Err(err error) Result {
+	return result{activesupport.Err(err)}
+}
+
+type result struct {
+	activesupport.SomeResult
+}
+
+func (r result) UnwrapRecord() *ActiveRecord {
+	return r.Unwrap().(*ActiveRecord)
+}
+
+func (r result) andThen(op func(*ActiveRecord) (*ActiveRecord, error)) Result {
+	if r.IsOk() {
+		return Return(op(r.Ok().(*ActiveRecord)))
+	}
+	return r
+}
+
+func (r result) Insert() Result {
+	return r.andThen((*ActiveRecord).Insert)
+}
+
+func (r result) Update() Result {
+	return r.andThen((*ActiveRecord).Update)
+}
+
+func (r result) Delete() Result {
+	return r.andThen((*ActiveRecord).Delete)
 }
 
 type ActiveRecord struct {
@@ -27,7 +85,7 @@ type ActiveRecord struct {
 	associationRecords map[string]*ActiveRecord
 }
 
-func (r *ActiveRecord) ToHash() map[string]interface{} {
+func (r *ActiveRecord) ToHash() activesupport.Hash {
 	return r.attributes.values
 }
 
@@ -102,11 +160,13 @@ func (r *ActiveRecord) AccessAssociation(assocName string) (*ActiveRecord, error
 	}
 
 	assocId := r.AccessAttribute(reflection.AssociationForeignKey())
-	rec, err := reflection.Relation.WithContext(r.Context()).Find(assocId)
-	if err != nil {
-		return nil, err
+	// rec, err := reflection.Relation.WithContext(r.Context()).Find(assocId)
+	result := reflection.Relation.WithContext(r.Context()).Find(assocId)
+	if result.Err() != nil {
+		return nil, result.Err()
 	}
 
+	rec := result.UnwrapRecord()
 	r.associationRecords[assocName] = rec
 	return rec, nil
 }
@@ -174,14 +234,18 @@ func (r *ActiveRecord) Update() (*ActiveRecord, error) {
 	return nil, nil
 }
 
-func (r *ActiveRecord) Delete() error {
+func (r *ActiveRecord) Delete() (*ActiveRecord, error) {
 	op := DeleteOperation{
 		TableName:  r.tableName,
 		PrimaryKey: r.primaryKey.AttributeName(),
 		Value:      r.ID(),
 	}
 
-	return r.conn.ExecDelete(r.Context(), &op)
+	err := r.conn.ExecDelete(r.Context(), &op)
+	if err != nil {
+		return nil, err
+	}
+	return r, nil
 }
 
 func (r *ActiveRecord) IsPersisted() bool {

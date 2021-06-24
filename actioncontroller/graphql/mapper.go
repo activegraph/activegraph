@@ -27,6 +27,16 @@ type resource struct {
 	controller actioncontroller.AbstractController
 }
 
+func newResolveFunc(action actioncontroller.Action) graphql.FieldResolveFn {
+	return func(p graphql.ResolveParams) (interface{}, error) {
+		context := &actioncontroller.Context{
+			Context: p.Context, Params: actioncontroller.Parameters(p.Args),
+		}
+		result := action.Process(context)
+		return result.Execute(context)
+	}
+}
+
 type Mapper struct {
 	resources []resource
 }
@@ -59,15 +69,10 @@ func (m *Mapper) newIndexAction(
 	}
 
 	return &graphql.Field{
-		Name: model.Name() + "s",
-		Args: args,
-		Type: graphql.NewList(output),
-		Resolve: func(p graphql.ResolveParams) (interface{}, error) {
-			action.Process(&actioncontroller.Context{
-				Params: actioncontroller.Parameters(p.Args), Context: p.Context,
-			})
-			return nil, nil
-		},
+		Name:    model.Name() + "s",
+		Args:    args,
+		Type:    graphql.NewList(output),
+		Resolve: newResolveFunc(action),
 	}
 }
 
@@ -75,15 +80,10 @@ func (m *Mapper) newShowAction(
 	model actioncontroller.AbstractModel, output graphql.Output, action actioncontroller.Action,
 ) *graphql.Field {
 	return &graphql.Field{
-		Name: model.Name(),
-		Args: m.primaryKey(model),
-		Type: output,
-		Resolve: func(p graphql.ResolveParams) (interface{}, error) {
-			action.Process(&actioncontroller.Context{
-				Params: actioncontroller.Parameters(p.Args), Context: p.Context,
-			})
-			return nil, nil
-		},
+		Name:    model.Name(),
+		Args:    m.primaryKey(model),
+		Type:    output,
+		Resolve: newResolveFunc(action),
 	}
 }
 
@@ -113,17 +113,10 @@ func (m *Mapper) newUpdateAction(
 	}
 
 	return &graphql.Field{
-		Name: operation + strings.Title(model.Name()),
-		Args: args,
-		Type: output,
-		Resolve: func(p graphql.ResolveParams) (interface{}, error) {
-			context := &actioncontroller.Context{
-				Context: p.Context,
-				Params:  actioncontroller.Parameters(p.Args),
-			}
-			result := action.Process(context)
-			return result.Execute(context)
-		},
+		Name:    operation + strings.Title(model.Name()),
+		Args:    args,
+		Type:    output,
+		Resolve: newResolveFunc(action),
 	}
 }
 
@@ -131,15 +124,10 @@ func (m *Mapper) newDestroyAction(
 	model actioncontroller.AbstractModel, output graphql.Output, action actioncontroller.Action,
 ) *graphql.Field {
 	return &graphql.Field{
-		Name: "delete" + strings.Title(model.Name()),
-		Args: m.primaryKey(model),
-		Type: output,
-		Resolve: func(p graphql.ResolveParams) (interface{}, error) {
-			action.Process(&actioncontroller.Context{
-				Params: actioncontroller.Parameters(p.Args), Context: p.Context,
-			})
-			return nil, nil
-		},
+		Name:    "delete" + strings.Title(model.Name()),
+		Args:    m.primaryKey(model),
+		Type:    output,
+		Resolve: newResolveFunc(action),
 	}
 }
 

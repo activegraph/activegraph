@@ -1,5 +1,11 @@
 package activesupport
 
+type Hash map[string]interface{}
+
 type HashConverter interface {
-	ToHash() map[string]interface{}
+	ToHash() Hash
+}
+
+type HashArrayConverter interface {
+	ToHashArray() []Hash
 }

@@ -3,6 +3,8 @@ package activerecord
 import (
 	"context"
 	"fmt"
+
+	"github.com/activegraph/activegraph/activesupport"
 )
 
 type ErrUnknownPrimaryKey struct {
@@ -212,12 +214,8 @@ func (rel *Relation) Connection() Conn {
 	return conn
 }
 
-func (rel *Relation) New(params map[string]interface{}) *ActiveRecord {
-	rec, err := rel.Initialize(params)
-	if err != nil {
-		panic(err)
-	}
-	return rec
+func (rel *Relation) New(params map[string]interface{}) Result {
+	return Return(rel.Initialize(params))
 }
 
 func (rel *Relation) Initialize(params map[string]interface{}) (*ActiveRecord, error) {
@@ -245,7 +243,7 @@ func (rel *Relation) Create(params map[string]interface{}) (*ActiveRecord, error
 	return rec.Insert()
 }
 
-func (rel *Relation) ExtractRecord(h Hash) (*ActiveRecord, error) {
+func (rel *Relation) ExtractRecord(h activesupport.Hash) (*ActiveRecord, error) {
 	var (
 		attrNames   = rel.scope.AttributeNames()
 		columnNames = rel.scope.ColumnNames()
@@ -285,7 +283,7 @@ func (rel *Relation) Each(fn func(*ActiveRecord) error) error {
 
 	var lasterr error
 
-	err := rel.Connection().ExecQuery(rel.Context(), q.Operation(), func(h Hash) bool {
+	err := rel.Connection().ExecQuery(rel.Context(), q.Operation(), func(h activesupport.Hash) bool {
 		rec, e := rel.ExtractRecord(h)
 		if lasterr = e; e != nil {
 			return false
@@ -397,26 +395,26 @@ func (rel *Relation) Joins(assocNames ...string) *Relation {
 	return newrel
 }
 
-func (rel *Relation) Find(id interface{}) (*ActiveRecord, error) {
+func (rel *Relation) Find(id interface{}) Result {
 	var q QueryBuilder
 	q.From(rel.TableName())
 	q.Select(rel.scope.AttributeNames()...)
 	// TODO: consider using unified approach.
 	q.Where(fmt.Sprintf("%s = ?", rel.PrimaryKey()), id)
 
-	var rows []Hash
+	var rows []activesupport.Hash
 
-	if err := rel.Connection().ExecQuery(rel.Context(), q.Operation(), func(h Hash) bool {
+	if err := rel.Connection().ExecQuery(rel.Context(), q.Operation(), func(h activesupport.Hash) bool {
 		rows = append(rows, h)
 		return true
 	}); err != nil {
-		return nil, err
+		return Err(err)
 	}
 
 	if len(rows) != 1 {
-		return nil, &ErrRecordNotFound{PrimaryKey: rel.PrimaryKey(), ID: id}
+		return Err(ErrRecordNotFound{PrimaryKey: rel.PrimaryKey(), ID: id})
 	}
-	return rel.Initialize(rows[0])
+	return rel.New(rows[0])
 }
 
 func (rel *Relation) InsertAll(params ...map[string]interface{}) (
@@ -446,8 +444,8 @@ func (rel *Relation) InsertAll(params ...map[string]interface{}) (
 }
 
 // ToA converts Relation to array. The method access database to retrieve objects.
-func (rel *Relation) ToA() ([]*ActiveRecord, error) {
-	var rr []*ActiveRecord
+func (rel *Relation) ToA() (Array, error) {
+	var rr Array
 
 	if err := rel.Each(func(r *ActiveRecord) error {
 		rr = append(rr, r)

@@ -10,6 +10,7 @@ import (
 	"github.com/pkg/errors"
 
 	"github.com/activegraph/activegraph/activerecord"
+	"github.com/activegraph/activegraph/activesupport"
 )
 
 func init() {
@@ -124,7 +125,7 @@ func (c *Conn) ExecInsert(ctx context.Context, op *activerecord.InsertOperation)
 }
 
 func (c *Conn) ExecQuery(
-	ctx context.Context, op *activerecord.QueryOperation, cb func(activerecord.Hash) bool,
+	ctx context.Context, op *activerecord.QueryOperation, cb func(activesupport.Hash) bool,
 ) (
 	err error,
 ) {
@@ -139,7 +140,7 @@ func (c *Conn) ExecQuery(
 	for rws.Next() {
 		var (
 			// Iterate over rows and scan one-by one.
-			row = make(activerecord.Hash)
+			row = make(activesupport.Hash)
 			// Initalize a list of interface pointer, so the Scan operation could
 			// assign the results to the each element of the list.
 			vals = make([]interface{}, len(op.Columns))
