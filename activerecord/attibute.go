@@ -6,6 +6,7 @@ import (
 
 	"github.com/pkg/errors"
 
+	"github.com/activegraph/activegraph/activesupport"
 	"github.com/activegraph/activegraph/internal"
 )
 
@@ -13,8 +14,6 @@ const (
 	Int    = "int"
 	String = "string"
 )
-
-type Hash map[string]interface{}
 
 // primaryKey must implement attributes that are primary keys.
 type primaryKey interface {
@@ -103,7 +102,7 @@ type attributes struct {
 	recordName string
 	primaryKey Attribute
 	keys       attributesMap
-	values     Hash
+	values     activesupport.Hash
 }
 
 func (a *attributes) copy() *attributes {
@@ -117,7 +116,7 @@ func (a *attributes) copy() *attributes {
 
 func (a *attributes) clear() *attributes {
 	newa := a.copy()
-	newa.values = make(Hash, len(a.keys))
+	newa.values = make(activesupport.Hash, len(a.keys))
 	return newa
 }
 
@@ -132,7 +131,7 @@ func (a *attributes) merge(a1 *attributes) *attributes {
 }
 
 // newAttributes creates a new collection of attributes for the specified record.
-func newAttributes(recordName string, attrs attributesMap, values Hash) (
+func newAttributes(recordName string, attrs attributesMap, values activesupport.Hash) (
 	*attributes, error,
 ) {
 
@@ -246,7 +245,7 @@ func (a *attributes) AssignAttribute(attrName string, val interface{}) error {
 	}
 
 	if a.values == nil {
-		a.values = make(Hash)
+		a.values = make(activesupport.Hash)
 	}
 	a.values[attrName] = val
 	return nil

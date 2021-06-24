@@ -2,6 +2,8 @@ package activerecord
 
 import (
 	"context"
+
+	"github.com/activegraph/activegraph/activesupport"
 )
 
 type Persistence interface {
@@ -44,7 +46,7 @@ type Conn interface {
 	Exec(ctx context.Context, query string, args ...interface{}) error
 	ExecInsert(ctx context.Context, op *InsertOperation) (id interface{}, err error)
 	ExecDelete(ctx context.Context, op *DeleteOperation) (err error)
-	ExecQuery(ctx context.Context, op *QueryOperation, cb func(Hash) bool) (err error)
+	ExecQuery(ctx context.Context, op *QueryOperation, cb func(activesupport.Hash) bool) (err error)
 
 	Close() error
 }
@@ -77,7 +79,7 @@ func (c *errConn) ExecDelete(context.Context, *DeleteOperation) error {
 	return c.err
 }
 
-func (c *errConn) ExecQuery(context.Context, *QueryOperation, func(Hash) bool) error {
+func (c *errConn) ExecQuery(context.Context, *QueryOperation, func(activesupport.Hash) bool) error {
 	return c.err
 }
 

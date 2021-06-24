@@ -13,17 +13,19 @@ func (fn ResultFunc) Execute(ctx *actioncontroller.Context) (interface{}, error)
 	return fn(ctx)
 }
 
-func ViewResult(res activesupport.Res) actioncontroller.Result {
+func ViewResult(res activesupport.Result) actioncontroller.Result {
 	return ResultFunc(func(ctx *actioncontroller.Context) (interface{}, error) {
-		if res.Err() != nil {
+		if res.IsErr() {
 			return nil, res.Err()
 		}
 
-		val, ok := res.Ok().(activesupport.HashConverter)
-		if !ok {
+		switch val := res.Ok().(type) {
+		case activesupport.HashConverter:
+			return val.ToHash(), nil
+		case activesupport.HashArrayConverter:
+			return val.ToHashArray(), nil
+		default:
 			return nil, errors.Errorf("%T does not support hash conversion", val)
 		}
-
-		return val.ToHash(), nil
 	})
 }
