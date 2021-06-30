@@ -19,13 +19,13 @@ type C struct {
 	params  map[string][]activerecord.Attribute
 }
 
-func (c *C) BeforeAction(only ...string) {
+func (c *C) BeforeAction(action AnonymousAction, only ...string) {
 }
 
-func (c *C) AfterAction() {
+func (c *C) AfterAction(action AnonymousAction, only ...string) {
 }
 
-func (c *C) AroundAction() {
+func (c *C) AroundAction(action AnonymousAction, only ...string) {
 }
 
 func (c *C) Action(name string, a AnonymousAction) {
@@ -95,4 +95,12 @@ func (c *ActionController) ActionMethods() []Action {
 		actions = append(actions, action)
 	}
 	return actions
+}
+
+func (c *ActionController) Action(actionName string) Action {
+	action, ok := c.actions[actionName]
+	if !ok {
+		return nil
+	}
+	return action
 }

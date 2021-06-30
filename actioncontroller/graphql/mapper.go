@@ -1,6 +1,7 @@
 package graphql
 
 import (
+	"fmt"
 	"net/http"
 	"strings"
 
@@ -9,6 +10,26 @@ import (
 
 	"github.com/graphql-go/graphql"
 	"github.com/graphql-go/handler"
+)
+
+type ErrConstraintNotFound struct {
+	Operation  string
+	Name       string
+	Constraint string
+}
+
+func (e ErrConstraintNotFound) Error() string {
+	return fmt.Sprintf(
+		"%s constraint for %s '%s' not found", e.Constraint, e.Operation, e.Name,
+	)
+}
+
+const (
+	// GraphQL operations.
+	OperationQuery        = "query"        // a read-only fetch.
+	OperationMutation     = "mutation"     // a write followed by fetch.
+	OperationSubscription = "subscription" // unsupported yet.
+	OperationUnknown      = ""
 )
 
 func typeconv(t string) graphql.Type {
@@ -22,9 +43,36 @@ func typeconv(t string) graphql.Type {
 	}
 }
 
+func argsconv(attrs []activerecord.Attribute) graphql.FieldConfigArgument {
+	args := make(graphql.FieldConfigArgument, len(attrs))
+	for _, attr := range attrs {
+		args[attr.AttributeName()] = &graphql.ArgumentConfig{
+			Type: typeconv(attr.CastType()),
+		}
+	}
+	return args
+}
+
+func objconv(name string, attrs []activerecord.Attribute) *graphql.Object {
+	fields := make(graphql.Fields, len(attrs))
+	for _, attr := range attrs {
+		fields[attr.AttributeName()] = &graphql.Field{
+			Name: attr.AttributeName(), Type: typeconv(attr.CastType()),
+		}
+	}
+	return graphql.NewObject(graphql.ObjectConfig{Name: name, Fields: fields})
+}
+
 type resource struct {
 	model      actioncontroller.AbstractModel
 	controller actioncontroller.AbstractController
+}
+
+type matching struct {
+	operation   string
+	name        string
+	action      actioncontroller.Action
+	constraints actioncontroller.Constraints
 }
 
 func newResolveFunc(action actioncontroller.Action) graphql.FieldResolveFn {
@@ -39,12 +87,32 @@ func newResolveFunc(action actioncontroller.Action) graphql.FieldResolveFn {
 
 type Mapper struct {
 	resources []resource
+	matchings []matching
 }
 
 func (m *Mapper) Resources(
 	model actioncontroller.AbstractModel, controller actioncontroller.AbstractController,
 ) {
 	m.resources = append(m.resources, resource{model, controller})
+}
+
+func (m *Mapper) Match(
+	via, path string,
+	action actioncontroller.Action,
+	constraints ...actioncontroller.Constraints,
+) {
+	var constraint actioncontroller.Constraints
+	if len(constraints) > 0 {
+		constraint = constraints[len(constraints)-1]
+	}
+	if constraint.Request == nil {
+		panic(ErrConstraintNotFound{Name: path, Operation: via, Constraint: "request"})
+	}
+	if constraint.Response == nil {
+		panic(ErrConstraintNotFound{Name: path, Operation: via, Constraint: "response"})
+	}
+
+	m.matchings = append(m.matchings, matching{via, path, action, constraint})
 }
 
 func (m *Mapper) primaryKey(model actioncontroller.AbstractModel) graphql.FieldConfigArgument {
@@ -54,6 +122,20 @@ func (m *Mapper) primaryKey(model actioncontroller.AbstractModel) graphql.FieldC
 				typeconv(model.AttributeForInspect(model.PrimaryKey()).CastType()),
 			),
 		},
+	}
+}
+
+func (m *Mapper) newAction(
+	name string,
+	args []activerecord.Attribute,
+	result []activerecord.Attribute,
+	action actioncontroller.Action,
+) *graphql.Field {
+	return &graphql.Field{
+		Name:    name,
+		Args:    argsconv(args),
+		Type:    objconv(strings.Title(name)+"Payload", result),
+		Resolve: newResolveFunc(action),
 	}
 }
 
@@ -136,19 +218,9 @@ func (m *Mapper) Map() (http.Handler, error) {
 	mutations := make(graphql.Fields)
 
 	for _, resource := range m.resources {
-		objFields := make(graphql.Fields)
-		for _, attrName := range resource.model.AttributeNames() {
-			attr := resource.model.AttributeForInspect(attrName)
-
-			objFields[attrName] = &graphql.Field{
-				Name: attrName, Type: typeconv(attr.CastType()),
-			}
-		}
-
-		output := graphql.NewObject(graphql.ObjectConfig{
-			Name:   strings.Title(resource.model.Name()),
-			Fields: objFields,
-		})
+		output := objconv(
+			strings.Title(resource.model.Name()), resource.model.AttributesForInspect(),
+		)
 
 		for _, action := range resource.controller.ActionMethods() {
 			switch action.ActionName() {
@@ -164,7 +236,22 @@ func (m *Mapper) Map() (http.Handler, error) {
 			case actioncontroller.ActionDestroy:
 				mutation := m.newDestroyAction(resource.model, output, action)
 				mutations[mutation.Name] = mutation
+			default:
+				// println("consider registering non-canonical action?")
 			}
+		}
+	}
+
+	for _, matching := range m.matchings {
+		switch matching.operation {
+		case OperationQuery:
+		case OperationMutation:
+			mutations[matching.name] = m.newAction(
+				matching.name,
+				matching.constraints.Request.Attributes,
+				matching.constraints.Response.Attributes,
+				matching.action,
+			)
 		}
 	}
 
