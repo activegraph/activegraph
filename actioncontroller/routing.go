@@ -11,13 +11,28 @@ type AbstractModel interface {
 	PrimaryKey() string
 	AttributeNames() []string
 	AttributeForInspect(attrName string) activerecord.Attribute
+	AttributesForInspect(attrNames ...string) []activerecord.Attribute
 }
 
 type AbstractController interface {
 	ActionMethods() []Action
 }
 
+type Matcher interface {
+	Matches(*Request) bool
+}
+
+type Constraints struct {
+	Request  *StrongParameters
+	Response *StrongParameters
+	Match    Matcher
+}
+
 type Mapper interface {
 	Resources(AbstractModel, AbstractController)
+
+	// Match matches path to an action.
+	Match(via, path string, action Action, constraints ...Constraints)
+
 	Map() (http.Handler, error)
 }

@@ -307,6 +307,9 @@ func (a *attributes) AttributeForInspect(attrName string) Attribute {
 
 func (a *attributes) AttributesForInspect(attrNames ...string) []Attribute {
 	attrs := make([]Attribute, 0, len(attrNames))
+	if len(attrNames) == 0 {
+		attrNames = a.AttributeNames()
+	}
 	for _, attrName := range attrNames {
 		if a.HasAttribute(attrName) {
 			attrs = append(attrs, a.keys[attrName])
