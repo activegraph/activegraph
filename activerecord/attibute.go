@@ -7,7 +7,6 @@ import (
 	"github.com/pkg/errors"
 
 	"github.com/activegraph/activegraph/activesupport"
-	"github.com/activegraph/activegraph/internal"
 )
 
 const (
@@ -110,7 +109,7 @@ func (a *attributes) copy() *attributes {
 		recordName: a.recordName,
 		primaryKey: a.primaryKey,
 		keys:       a.keys.copy(),
-		values:     internal.CopyMap(a.values),
+		values:     a.values.Copy(),
 	}
 }
 
@@ -261,7 +260,7 @@ func (a *attributes) AssignAttributes(newAttributes map[string]interface{}) erro
 	// return the object in the previous state.
 	var (
 		keys   = a.keys.copy()
-		values = internal.CopyMap(a.values)
+		values = a.values.Copy()
 	)
 
 	for attrName, val := range newAttributes {
