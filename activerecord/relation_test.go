@@ -9,6 +9,7 @@ import (
 
 	"github.com/activegraph/activegraph/activerecord"
 	_ "github.com/activegraph/activegraph/activerecord/sqlite3"
+	"github.com/activegraph/activegraph/activesupport"
 )
 
 func initAuthorTable(t *testing.T, conn activerecord.Conn) {
@@ -37,6 +38,35 @@ func initBookTable(t *testing.T, conn activerecord.Conn) {
 		);
 	`)
 	require.NoError(t, err)
+}
+
+func TestRelation_New(t *testing.T) {
+	Product := activerecord.New("product", func(r *activerecord.R) {
+		r.AttrString("name")
+	})
+
+	p := Product.New(activesupport.Hash{"name": "Vacuum Cleaner"})
+	require.NoError(t, p.Err())
+	require.Equal(t, p.UnwrapRecord().Attribute("name"), "Vacuum Cleaner")
+}
+
+func TestRelation_New_WithoutParams(t *testing.T) {
+	Product := activerecord.New("product", func(r *activerecord.R) {
+		r.AttrString("name")
+	})
+
+	p := Product.New().UnwrapRecord()
+	require.NoError(t, p.AssignAttribute("name", "Holy Grail"))
+}
+
+func TestRelation_New_MultipleParams(t *testing.T) {
+	Product := activerecord.New("product", func(r *activerecord.R) {})
+	p := Product.New(activesupport.Hash{}, activesupport.Hash{})
+
+	require.Error(t, p.Err())
+
+	err := &activesupport.ErrMultipleVariadicArguments{Name: "params"}
+	require.Equal(t, err.Error(), p.Err().Error())
 }
 
 func TestRelation_Limit(t *testing.T) {

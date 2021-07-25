@@ -214,8 +214,15 @@ func (rel *Relation) Connection() Conn {
 	return conn
 }
 
-func (rel *Relation) New(params map[string]interface{}) Result {
-	return Return(rel.Initialize(params))
+func (rel *Relation) New(params ...map[string]interface{}) Result {
+	switch len(params) {
+	case 0:
+		return Return(rel.Initialize(nil))
+	case 1:
+		return Return(rel.Initialize(params[0]))
+	default:
+		return Err(&activesupport.ErrMultipleVariadicArguments{Name: "params"})
+	}
 }
 
 func (rel *Relation) Initialize(params map[string]interface{}) (*ActiveRecord, error) {
