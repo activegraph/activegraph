@@ -164,3 +164,37 @@ func (c *Conn) ExecQuery(
 
 	return nil
 }
+
+func (c *Conn) ColumnDefinitions(ctx context.Context, tableName string) (
+	[]activerecord.ColumnDefinition, error,
+) {
+	stmt := fmt.Sprintf("PRAGMA table_info('%s')", tableName)
+	rws, err := c.querier.QueryContext(ctx, stmt)
+	if err != nil {
+		return nil, err
+	}
+
+	defer rws.Close()
+
+	var definitions []activerecord.ColumnDefinition
+	for rws.Next() {
+		var (
+			cid, notnull, pk int
+			fname, ftype     string
+			defaultValue     interface{}
+		)
+
+		err := rws.Scan(&cid, &fname, &ftype, &notnull, &defaultValue, &pk)
+		if err != nil {
+			return nil, err
+		}
+
+		definitions = append(definitions, activerecord.ColumnDefinition{
+			Name:         fname,
+			Type:         strings.ToLower(ftype),
+			NotNull:      notnull == 1,
+			IsPrimaryKey: pk == 1,
+		})
+	}
+	return definitions, nil
+}

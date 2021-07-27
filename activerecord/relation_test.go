@@ -41,13 +41,22 @@ func initBookTable(t *testing.T, conn activerecord.Conn) {
 }
 
 func TestRelation_New(t *testing.T) {
-	Product := activerecord.New("product", func(r *activerecord.R) {
-		r.AttrString("name")
+	conn, _ := activerecord.EstablishConnection(activerecord.DatabaseConfig{
+		Adapter:  "sqlite3",
+		Database: t.Name() + ".db",
 	})
 
-	p := Product.New(activesupport.Hash{"name": "Vacuum Cleaner"})
-	require.NoError(t, p.Err())
-	require.Equal(t, p.UnwrapRecord().Attribute("name"), "Vacuum Cleaner")
+	defer os.Remove(t.Name() + ".db")
+	defer activerecord.RemoveConnection("primary")
+
+	initAuthorTable(t, conn)
+
+	Author := activerecord.New("author")
+	a := Author.New(activesupport.Hash{"name": "Nassim Taleb"})
+	a = a.Insert()
+
+	require.NoError(t, a.Err())
+	require.Equal(t, a.UnwrapRecord().Attribute("name"), "Nassim Taleb")
 }
 
 func TestRelation_New_WithoutParams(t *testing.T) {
