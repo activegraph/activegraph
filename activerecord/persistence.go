@@ -38,6 +38,13 @@ type QueryOperation struct {
 	Columns []string
 }
 
+type ColumnDefinition struct {
+	Name         string
+	Type         string
+	NotNull      bool
+	IsPrimaryKey bool
+}
+
 type Conn interface {
 	BeginTransaction(ctx context.Context) (Conn, error)
 	CommitTransaction(ctx context.Context) error
@@ -47,6 +54,8 @@ type Conn interface {
 	ExecInsert(ctx context.Context, op *InsertOperation) (id interface{}, err error)
 	ExecDelete(ctx context.Context, op *DeleteOperation) (err error)
 	ExecQuery(ctx context.Context, op *QueryOperation, cb func(activesupport.Hash) bool) (err error)
+
+	ColumnDefinitions(ctx context.Context, tableName string) ([]ColumnDefinition, error)
 
 	Close() error
 }
@@ -81,6 +90,10 @@ func (c *errConn) ExecDelete(context.Context, *DeleteOperation) error {
 
 func (c *errConn) ExecQuery(context.Context, *QueryOperation, func(activesupport.Hash) bool) error {
 	return c.err
+}
+
+func (c *errConn) ColumnDefinitions(ctx context.Context, tableName string) ([]ColumnDefinition, error) {
+	return nil, c.err
 }
 
 func (c *errConn) Close() error {

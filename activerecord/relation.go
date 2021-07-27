@@ -78,6 +78,32 @@ func (r *R) HasMany(name string) {
 	r.assocs[name] = &HasMany{name: name}
 }
 
+func (r *R) init(ctx context.Context, tableName string) error {
+	conn, err := r.connections.RetrieveConnection(primaryConnectionName)
+	if err != nil {
+		return err
+	}
+
+	definitions, err := conn.ColumnDefinitions(ctx, tableName)
+	if err != nil {
+		return err
+	}
+
+	for _, column := range definitions {
+		switch column.Type {
+		case "integer":
+			r.AttrInt(column.Name)
+		case "varchar":
+			r.AttrString(column.Name)
+		}
+
+		if column.IsPrimaryKey {
+			r.PrimaryKey(column.Name)
+		}
+	}
+	return nil
+}
+
 type Relation struct {
 	name      string
 	tableName string
@@ -93,12 +119,24 @@ type Relation struct {
 	AttributeMethods
 }
 
-func New(name string, init func(*R)) *Relation {
-	schema, err := Initialize(name, init)
+func New(name string, init ...func(*R)) *Relation {
+	var (
+		rel *Relation
+		err error
+	)
+	switch len(init) {
+	case 0:
+		rel, err = Initialize(name, nil)
+	case 1:
+		rel, err = Initialize(name, init[0])
+	default:
+		panic(&activesupport.ErrMultipleVariadicArguments{Name: "init"})
+	}
+
 	if err != nil {
 		panic(err)
 	}
-	return schema
+	return rel
 }
 
 func Initialize(name string, init func(*R)) (*Relation, error) {
@@ -109,7 +147,11 @@ func Initialize(name string, init func(*R)) (*Relation, error) {
 		connections: globalConnectionHandler,
 	}
 
-	init(&r)
+	if init == nil {
+		r.init(context.TODO(), name+"s")
+	} else {
+		init(&r)
+	}
 
 	// When the primary key was assigned to record builder, mark it explicitely
 	// wrapping with PrimaryKey structure. Otherwise, fallback to the default primary

@@ -153,7 +153,7 @@ func newAttributes(recordName string, attrs attributesMap, values activesupport.
 	// When the primary key attribute was not specified directly, generate
 	// a new "id" integer attribute, ensure that the attribute with the same
 	// name is not presented in the schema definition.
-	if _, dup := recordAttrs.keys[defaultPrimaryKeyName]; dup {
+	if _, dup := recordAttrs.keys[defaultPrimaryKeyName]; dup && recordAttrs.primaryKey == nil {
 		err := errors.Errorf("%q is an attribute, but not a primary key", defaultPrimaryKeyName)
 		return nil, err
 	}
