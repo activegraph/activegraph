@@ -20,31 +20,6 @@ Implementation of the ActiveGraph, comparing to other Go frameworks does not req
 GraphQL schema declaration. Instead, it is highly anticipated to work with
 business models of the service as API entities for GraphQL server.
 
-### Simple query
-```go
-import "context"
-import "net/http"
-
-import "github.com/activegraph/activegraph"
-
-
-func main() {
-    // Define a query function to retrieve "names".
-    queryNames := func(ctx context.Context) ([]string, error) {
-        return []string{"Steve", "Wozniak"}, nil
-    }
-
-    // Create ActiveGraph server with a single GraphQL query.
-    s := activegraph.Server {
-        Queries: []activegraph.FuncDef{activegraph.NewFunc("names", queryNames)},
-    }
-
-    // Serve GraphQL service at "localhost:8000/graphql" endpoint.
-    http.Handle("/graphql", s)
-    http.ListenAndServe(":8000", nil)
-}
-```
-
 ## License
 
 ActiveGraph is [MIT licensed](LICENSE).

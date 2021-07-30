@@ -23,16 +23,16 @@ type Action interface {
 	Process(ctx *Context) Result
 }
 
-type AnonymousAction func(*Context) Result
+type ActionFunc func(*Context) Result
 
-func (fn AnonymousAction) Process(ctx *Context) Result {
+func (fn ActionFunc) Process(ctx *Context) Result {
 	return fn(ctx)
 }
 
 type NamedAction struct {
 	Name    string
 	Request []activerecord.Attribute
-	AnonymousAction
+	ActionFunc
 }
 
 func (a *NamedAction) ActionRequest() []activerecord.Attribute {
