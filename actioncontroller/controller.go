@@ -15,21 +15,38 @@ func (m actionsMap) copy() actionsMap {
 }
 
 type C struct {
-	actions actionsMap
-	params  map[string][]activerecord.Attribute
+	actions   actionsMap
+	callbacks callbacks
+
+	params map[string][]activerecord.Attribute
 }
 
-func (c *C) BeforeAction(action AnonymousAction, only ...string) {
+func (c *C) AppendBeforeAction(cb Callback, only ...string) {
+	c.callbacks.appendBeforeAction(cb, only)
 }
 
-func (c *C) AfterAction(action AnonymousAction, only ...string) {
+func (c *C) BeforeAction(cb Callback, only ...string) {
+	c.AppendBeforeAction(cb, only...)
 }
 
-func (c *C) AroundAction(action AnonymousAction, only ...string) {
+func (c *C) AppendAfterAction(cb Callback, only ...string) {
+	c.callbacks.appendAfterAction(cb, only)
 }
 
-func (c *C) Action(name string, a AnonymousAction) {
-	c.actions[name] = &NamedAction{Name: name, AnonymousAction: a}
+func (c *C) AfterAction(cb Callback, only ...string) {
+	c.AppendAfterAction(cb, only...)
+}
+
+func (c *C) AppendAroundAction(cb CallbackAround, only ...string) {
+	c.callbacks.appendAroundAction(cb, only)
+}
+
+func (c *C) AroundAction(cb CallbackAround, only ...string) {
+	c.AppendAroundAction(cb, only...)
+}
+
+func (c *C) Action(name string, a ActionFunc) {
+	c.actions[name] = &NamedAction{Name: name, ActionFunc: a}
 }
 
 func (c *C) Permit(params []activerecord.Attribute, names ...string) {
@@ -39,23 +56,23 @@ func (c *C) Permit(params []activerecord.Attribute, names ...string) {
 	}
 }
 
-func (c *C) Create(a AnonymousAction) {
+func (c *C) Create(a ActionFunc) {
 	c.Action(ActionCreate, a)
 }
 
-func (c *C) Update(a AnonymousAction) {
+func (c *C) Update(a ActionFunc) {
 	c.Action(ActionUpdate, a)
 }
 
-func (c *C) Show(a AnonymousAction) {
+func (c *C) Show(a ActionFunc) {
 	c.Action(ActionShow, a)
 }
 
-func (c *C) Index(a AnonymousAction) {
+func (c *C) Index(a ActionFunc) {
 	c.Action(ActionIndex, a)
 }
 
-func (c *C) Destroy(a AnonymousAction) {
+func (c *C) Destroy(a ActionFunc) {
 	c.Action(ActionDestroy, a)
 }
 
@@ -77,6 +94,8 @@ func Initialize(init func(*C)) (*ActionController, error) {
 
 	for actionName, action := range c.actions {
 		action.Request = c.params[actionName]
+		action = c.callbacks.override(action)
+		c.actions[actionName] = action
 	}
 
 	return &ActionController{
