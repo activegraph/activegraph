@@ -21,6 +21,24 @@ type C struct {
 	params map[string][]activerecord.Attribute
 }
 
+// AppendBeforeAction appends a callback before actions. See Callback for parameter
+// details.
+//
+// Use the before callback to execute necessary logic before executing an action, the
+// implementation could completely override the behavior of the action.
+//
+// The chain of "before" callbacks execution interrupts when the non-nil result
+// is returned. It's anticipated that before filters are often used to
+// prevent from execution certain operations or queries.
+//
+//	AdminController := actioncontroller.New(func(c *actioncontroller.C) {
+//		c.AppendBeforeAction(func(ctx *actioncontroller.Context) actioncontroller.Result {
+//			if !isAuthorized(ctx) {
+//				return actionview.ContentResult(nil, errors.New("forbidden"))
+//			}
+//			return nil
+//		})
+//	})
 func (c *C) AppendBeforeAction(cb Callback, only ...string) {
 	c.callbacks.appendBeforeAction(cb, only)
 }
@@ -37,6 +55,28 @@ func (c *C) AfterAction(cb Callback, only ...string) {
 	c.AppendAfterAction(cb, only...)
 }
 
+// AppendAroundAction appends a callback around action. See CallbackAround for parameter
+// details.
+//
+// Use the around callback to wrap the action with extra logic, e.g. execute
+// all operations within an action in a database transaction.
+//
+//	func WrapInTransaction(
+//		ctx *actioncontroller.Context, action actioncontroller.Action
+//	) (result actioncontroller.Result) {
+//		err := activerecord.Transaction(ctx, func() error {
+//			result = action.Process(ctx)
+//			return result.Err()
+//		})
+//		if err != nil {
+//			return actionview.ContentResult(nil, err)
+//		}
+//		return nil
+//	}
+//
+//	ProductsController := actioncontroller.New(func(c *actioncontroller.C) {
+//		c.AppendAroundAction(WrapInTransaction)
+//	})
 func (c *C) AppendAroundAction(cb CallbackAround, only ...string) {
 	c.callbacks.appendAroundAction(cb, only)
 }
