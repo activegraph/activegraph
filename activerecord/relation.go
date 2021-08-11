@@ -21,6 +21,7 @@ type R struct {
 	primaryKey  string
 	attrs       attributesMap
 	assocs      associationsMap
+	validators  validatorsMap
 	reflection  *Reflection
 	connections *connectionHandler
 }
@@ -38,23 +39,29 @@ func (r *R) PrimaryKey(name string) {
 	r.primaryKey = name
 }
 
-func (r *R) AttrInt(name string, validates ...IntValidator) {
-	r.attrs[name] = IntAttr{Name: name, Validates: validates}
+func (r *R) AttrInt(name string) {
+	r.attrs[name] = IntAttr{Name: name}
+	r.validators.include(name, new(IntValidator))
 }
 
-func (r *R) AttrString(name string, validates ...StringValidator) {
-	r.attrs[name] = StringAttr{Name: name, Validates: validates}
+func (r *R) AttrString(name string) {
+	r.attrs[name] = StringAttr{Name: name}
+	r.validators.include(name, new(StringValidator))
 }
 
-func (r *R) AttrFloat(name string, validates ...FloatValidator) {
-	r.attrs[name] = FloatAttr{Name: name, Validates: validates}
+func (r *R) AttrFloat(name string) {
+	r.attrs[name] = FloatAttr{Name: name}
+	r.validators.include(name, new(FloatValidator))
 }
 
-func (r *R) AttrBoolean(name string, validates ...BooleanValidator) {
-	r.attrs[name] = BooleanAttr{Name: name, Validates: validates}
+func (r *R) AttrBoolean(name string) {
+	r.attrs[name] = BooleanAttr{Name: name}
+	r.validators.include(name, new(BooleanValidator))
 }
 
-func (r *R) Validates(name string, validators ...Validator) {
+// Validates that the specified attributes are not blank.
+func (r *R) ValidatesPresence(names ...string) {
+	r.validators.extend(names, new(PresenceValidator))
 }
 
 func (r *R) Scope(reflection *Reflection) {
@@ -76,8 +83,7 @@ func (r *R) BelongsTo(name string, init ...func(*BelongsTo)) {
 	}
 
 	r.attrs[assoc.AssociationForeignKey()] = IntAttr{
-		Name:      assoc.AssociationForeignKey(),
-		Validates: IntValidators(nil),
+		Name: assoc.AssociationForeignKey(),
 	}
 	r.assocs[name] = &assoc
 }
@@ -128,6 +134,7 @@ type Relation struct {
 	ctx   context.Context
 
 	associations
+	validations
 	AttributeMethods
 }
 
@@ -155,6 +162,7 @@ func Initialize(name string, init func(*R)) (*Relation, error) {
 	r := R{
 		assocs:      make(associationsMap),
 		attrs:       make(attributesMap),
+		validators:  make(validatorsMap),
 		reflection:  globalReflection,
 		connections: globalConnectionHandler,
 	}
@@ -186,6 +194,7 @@ func Initialize(name string, init func(*R)) (*Relation, error) {
 	}
 
 	assocs := newAssociations(name, r.assocs.copy(), r.reflection)
+	validations := newValidations(r.validators.copy())
 
 	// Create the model schema, and register it within a reflection instance.
 	rel := &Relation{
@@ -193,6 +202,7 @@ func Initialize(name string, init func(*R)) (*Relation, error) {
 		tableName:        r.tableName,
 		scope:            scope,
 		associations:     *assocs,
+		validations:      *validations,
 		connections:      r.connections,
 		query:            &QueryBuilder{from: r.tableName},
 		AttributeMethods: scope,
@@ -222,6 +232,7 @@ func (rel *Relation) Copy() *Relation {
 		query:            rel.query.copy(),
 		ctx:              rel.ctx,
 		associations:     *rel.associations.copy(),
+		validations:      *rel.validations.copy(),
 		AttributeMethods: scope,
 	}
 }
@@ -292,6 +303,7 @@ func (rel *Relation) Initialize(params map[string]interface{}) (*ActiveRecord, e
 		conn:               rel.Connection(),
 		attributes:         *attributes,
 		associations:       *rel.associations.copy(),
+		validations:        *rel.validations.copy(),
 		associationRecords: make(map[string]*ActiveRecord),
 	}, nil
 }

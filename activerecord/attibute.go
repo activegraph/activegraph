@@ -24,7 +24,6 @@ type primaryKey interface {
 type Attribute interface {
 	AttributeName() string
 	CastType() string
-	Validator
 }
 
 type AttributeMethods interface {
@@ -54,40 +53,32 @@ func (p PrimaryKey) PrimaryKey() bool {
 }
 
 type IntAttr struct {
-	Name      string
-	Validates IntValidators
+	Name string
 }
 
-func (a IntAttr) AttributeName() string            { return a.Name }
-func (a IntAttr) CastType() string                 { return Int }
-func (a IntAttr) Validate(value interface{}) error { return a.Validates.Validate(value) }
+func (a IntAttr) AttributeName() string { return a.Name }
+func (a IntAttr) CastType() string      { return Int }
 
 type StringAttr struct {
-	Name      string
-	Validates StringValidators
+	Name string
 }
 
-func (a StringAttr) AttributeName() string            { return a.Name }
-func (a StringAttr) CastType() string                 { return String }
-func (a StringAttr) Validate(value interface{}) error { return a.Validates.Validate(value) }
+func (a StringAttr) AttributeName() string { return a.Name }
+func (a StringAttr) CastType() string      { return String }
 
 type FloatAttr struct {
-	Name      string
-	Validates FloatValidators
+	Name string
 }
 
-func (a FloatAttr) AttributeName() string            { return a.Name }
-func (a FloatAttr) CastType() string                 { return Float }
-func (a FloatAttr) Validate(value interface{}) error { return a.Validates.Validate(value) }
+func (a FloatAttr) AttributeName() string { return a.Name }
+func (a FloatAttr) CastType() string      { return Float }
 
 type BooleanAttr struct {
-	Name      string
-	Validates BooleanValidators
+	Name string
 }
 
-func (a BooleanAttr) AttributeName() string            { return a.Name }
-func (a BooleanAttr) CastType() string                 { return Boolean }
-func (a BooleanAttr) Validate(value interface{}) error { return a.Validates.Validate(value) }
+func (a BooleanAttr) AttributeName() string { return a.Name }
+func (a BooleanAttr) CastType() string      { return Boolean }
 
 // ErrUnknownAttribute is returned on attempt to assign unknown attribute to the
 // ActiveRecord.
@@ -254,14 +245,13 @@ func (a *attributes) HasAttributes(attrNames ...string) bool {
 //
 // Method return an error when value does not pass validation of the attribute.
 func (a *attributes) AssignAttribute(attrName string, val interface{}) error {
-	attr, ok := a.keys[attrName]
-	if !ok {
+	if !a.HasAttribute(attrName) {
 		return &ErrUnknownAttribute{RecordName: a.recordName, Attr: attrName}
 	}
-	// Ensure that attribute passes validation.
-	if err := attr.Validate(val); err != nil {
-		return err
-	}
+	// TODO: Ensure that attribute passes validation?
+	// if err := attr.Validate(val); err != nil {
+	// 	return err
+	// }
 
 	if a.values == nil {
 		a.values = make(activesupport.Hash)
