@@ -81,6 +81,7 @@ type ActiveRecord struct {
 
 	attributes
 	associations
+	validations
 
 	associationRecords map[string]*ActiveRecord
 }
@@ -141,12 +142,7 @@ func (r *ActiveRecord) IsValid() bool {
 
 // Validate runs all the validation, returns unpassed validations, nil otherwise.
 func (r *ActiveRecord) Validate() error {
-	for attrName, attr := range r.attributes.keys {
-		if err := attr.Validate(r.attributes.values[attrName]); err != nil {
-			return err
-		}
-	}
-	return nil
+	return r.validations.validate(r)
 }
 
 func (r *ActiveRecord) AccessAssociation(assocName string) (*ActiveRecord, error) {
