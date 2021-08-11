@@ -10,8 +10,10 @@ import (
 )
 
 const (
-	Int    = "int"
-	String = "string"
+	Int     = "int"
+	String  = "string"
+	Float   = "float"
+	Boolean = "boolean"
 )
 
 // primaryKey must implement attributes that are primary keys.
@@ -68,6 +70,24 @@ type StringAttr struct {
 func (a StringAttr) AttributeName() string            { return a.Name }
 func (a StringAttr) CastType() string                 { return String }
 func (a StringAttr) Validate(value interface{}) error { return a.Validates.Validate(value) }
+
+type FloatAttr struct {
+	Name      string
+	Validates FloatValidators
+}
+
+func (a FloatAttr) AttributeName() string            { return a.Name }
+func (a FloatAttr) CastType() string                 { return Float }
+func (a FloatAttr) Validate(value interface{}) error { return a.Validates.Validate(value) }
+
+type BooleanAttr struct {
+	Name      string
+	Validates BooleanValidators
+}
+
+func (a BooleanAttr) AttributeName() string            { return a.Name }
+func (a BooleanAttr) CastType() string                 { return Boolean }
+func (a BooleanAttr) Validate(value interface{}) error { return a.Validates.Validate(value) }
 
 // ErrUnknownAttribute is returned on attempt to assign unknown attribute to the
 // ActiveRecord.
