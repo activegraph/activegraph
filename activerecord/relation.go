@@ -46,6 +46,14 @@ func (r *R) AttrString(name string, validates ...StringValidator) {
 	r.attrs[name] = StringAttr{Name: name, Validates: validates}
 }
 
+func (r *R) AttrFloat(name string, validates ...FloatValidator) {
+	r.attrs[name] = FloatAttr{Name: name, Validates: validates}
+}
+
+func (r *R) AttrBoolean(name string, validates ...BooleanValidator) {
+	r.attrs[name] = BooleanAttr{Name: name, Validates: validates}
+}
+
 func (r *R) Validates(name string, validators ...Validator) {
 }
 
@@ -95,6 +103,10 @@ func (r *R) init(ctx context.Context, tableName string) error {
 			r.AttrInt(column.Name)
 		case "varchar":
 			r.AttrString(column.Name)
+		case "float":
+			r.AttrFloat(column.Name)
+		case "boolean":
+			r.AttrBoolean(column.Name)
 		}
 
 		if column.IsPrimaryKey {
