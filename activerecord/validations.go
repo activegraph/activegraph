@@ -2,6 +2,7 @@ package activerecord
 
 import (
 	"fmt"
+	"regexp"
 
 	"github.com/pkg/errors"
 
@@ -10,26 +11,28 @@ import (
 
 type ErrInvalidValue struct {
 	AttrName string
-	TypeName string
+	Message  string
 	Value    interface{}
 }
 
 func (e ErrInvalidValue) Error() string {
-	return fmt.Sprintf(
-		"invalid value '%v' for %s type of attribute '%s'",
-		e.Value, e.TypeName, e.AttrName,
-	)
+	text := fmt.Sprintf("invalid value '%v' for attribute '%s'", e.Value, e.AttrName)
+	if len(e.Message) != 0 {
+		return fmt.Sprintf("%s, %s", text, e.Message)
+	}
+	return text
 }
 
-type ErrNotPresent struct {
+type ErrInvalidType struct {
 	AttrName string
+	TypeName string
 	Value    interface{}
 }
 
-func (e ErrNotPresent) Error() string {
+func (e ErrInvalidType) Error() string {
 	return fmt.Sprintf(
-		"value '%v' is not present (blank or nil) for attribute '%s'",
-		e.Value, e.AttrName,
+		"invalid value '%v' for %s type of attribute '%s'",
+		e.Value, e.TypeName, e.AttrName,
 	)
 }
 
@@ -108,7 +111,7 @@ func (v IntValidator) Validate(rec *ActiveRecord, attrName string, val interface
 	case int64:
 		intval = val
 	default:
-		return ErrInvalidValue{AttrName: attrName, TypeName: Int, Value: val}
+		return ErrInvalidType{AttrName: attrName, TypeName: Int, Value: val}
 	}
 	if v != nil {
 		return v(intval)
@@ -136,7 +139,7 @@ func (v StringValidator) Validate(rec *ActiveRecord, attrName string, val interf
 	}
 	s, ok := val.(string)
 	if !ok {
-		return ErrInvalidValue{AttrName: attrName, TypeName: String, Value: v}
+		return ErrInvalidType{AttrName: attrName, TypeName: String, Value: val}
 	}
 	if v != nil {
 		return v(s)
@@ -152,7 +155,7 @@ func (v FloatValidator) Validate(r *ActiveRecord, attrName string, val interface
 	}
 	f, ok := val.(float64)
 	if !ok {
-		return ErrInvalidValue{AttrName: attrName, TypeName: Float, Value: f}
+		return ErrInvalidType{AttrName: attrName, TypeName: Float, Value: val}
 	}
 	if v != nil {
 		return v(f)
@@ -168,7 +171,7 @@ func (v BooleanValidator) Validate(r *ActiveRecord, attrName string, val interfa
 	}
 	b, ok := val.(bool)
 	if !ok {
-		return ErrInvalidValue{AttrName: attrName, TypeName: Boolean, Value: b}
+		return ErrInvalidType{AttrName: attrName, TypeName: Boolean, Value: val}
 	}
 	if v != nil {
 		return v(b)
@@ -194,7 +197,56 @@ func (v PresenceValidator) Validate(r *ActiveRecord, attrName string, val interf
 	}
 
 	if blank {
-		return ErrNotPresent{AttrName: attrName, Value: val}
+		return ErrInvalidValue{
+			AttrName: attrName, Value: val, Message: "is not present (blank or nil)",
+		}
+	}
+	return nil
+}
+
+type FormatOptions struct {
+	Without bool
+}
+
+type FormatValidator struct {
+	re      *regexp.Regexp
+	options FormatOptions
+}
+
+func NewFormatValidator(re string, options ...FormatOptions) (*FormatValidator, error) {
+	var fv FormatValidator
+	switch len(options) {
+	case 0:
+	case 1:
+		fv.options = options[0]
+	default:
+		return nil, &activesupport.ErrMultipleVariadicArguments{Name: "options"}
+	}
+
+	reCompiled, err := regexp.Compile(re)
+	if err != nil {
+		return nil, err
+	}
+	fv.re = reCompiled
+	return &fv, nil
+}
+
+func (v FormatValidator) Validate(r *ActiveRecord, attrName string, val interface{}) error {
+	s, ok := val.(string)
+	if !ok {
+		return ErrInvalidType{AttrName: attrName, TypeName: String, Value: val}
+	}
+
+	match := v.re.Match([]byte(s))
+	if match && v.options.Without {
+		return ErrInvalidValue{
+			AttrName: attrName, Value: val, Message: "match regexp",
+		}
+	}
+	if !match && !v.options.Without {
+		return ErrInvalidValue{
+			AttrName: attrName, Value: val, Message: "do not match regexp",
+		}
 	}
 	return nil
 }

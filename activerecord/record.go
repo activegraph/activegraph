@@ -209,6 +209,10 @@ func (r *ActiveRecord) Collection(assocName string) *Relation {
 }
 
 func (r *ActiveRecord) Insert() (*ActiveRecord, error) {
+	if err := r.Validate(); err != nil {
+		return nil, err
+	}
+
 	op := InsertOperation{
 		TableName: r.tableName,
 		Values:    r.attributes.values,
