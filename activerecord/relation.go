@@ -64,6 +64,12 @@ func (r *R) ValidatesPresence(names ...string) {
 	r.validators.extend(names, new(PresenceValidator))
 }
 
+func (r *R) ValidatesFormat(name, regexp string, opts ...FormatOptions) {
+	validator, err := NewFormatValidator(regexp, opts...)
+	activesupport.Err(err).Unwrap()
+	r.validators.include(name, validator)
+}
+
 func (r *R) Scope(reflection *Reflection) {
 	if reflection == nil {
 		panic("nil reflection")
