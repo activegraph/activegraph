@@ -245,7 +245,7 @@ func (v PresenceValidator) Validate(r *ActiveRecord, attrName string, val interf
 
 	if blank {
 		return ErrInvalidValue{
-			AttrName: attrName, Value: val, Message: "is not present (blank or nil)",
+			AttrName: attrName, Value: val, Message: "can't be blank",
 		}
 	}
 	return nil
@@ -285,14 +285,43 @@ func (v FormatValidator) Validate(r *ActiveRecord, attrName string, val interfac
 	}
 
 	match := v.re.Match([]byte(s))
-	if match && v.options.Without {
+	if (match && v.options.Without) || (!match && !v.options.Without) {
 		return ErrInvalidValue{
-			AttrName: attrName, Value: val, Message: "match regexp",
+			AttrName: attrName, Value: val, Message: "is invalid",
 		}
 	}
-	if !match && !v.options.Without {
+	return nil
+}
+
+type InclusionValidator struct {
+	in activesupport.Slice
+}
+
+func NewInclusionValidator(in activesupport.Slice) InclusionValidator {
+	return InclusionValidator{in: in}
+}
+
+func (v InclusionValidator) Validate(r *ActiveRecord, attrName string, val interface{}) error {
+	if !v.in.Contains(val) {
 		return ErrInvalidValue{
-			AttrName: attrName, Value: val, Message: "do not match regexp",
+			AttrName: attrName, Value: val, Message: "is not included in the list",
+		}
+	}
+	return nil
+}
+
+type ExclusionValidator struct {
+	from activesupport.Slice
+}
+
+func NewExclusionValidator(from activesupport.Slice) ExclusionValidator {
+	return ExclusionValidator{from: from}
+}
+
+func (v ExclusionValidator) Validate(r *ActiveRecord, attrName string, val interface{}) error {
+	if v.from.Contains(val) {
+		return ErrInvalidValue{
+			AttrName: attrName, Value: val, Message: "is reserved",
 		}
 	}
 	return nil
