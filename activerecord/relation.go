@@ -70,6 +70,14 @@ func (r *R) ValidatesFormat(name, regexp string, opts ...FormatOptions) {
 	r.validators.include(name, validator)
 }
 
+func (r *R) ValidatesInclusion(name string, slice activesupport.Slice) {
+	r.validators.include(name, NewInclusionValidator(slice))
+}
+
+func (r *R) ValidatesExclusion(name string, slice activesupport.Slice) {
+	r.validators.include(name, NewExclusionValidator(slice))
+}
+
 func (r *R) Scope(reflection *Reflection) {
 	if reflection == nil {
 		panic("nil reflection")
