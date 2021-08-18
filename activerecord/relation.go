@@ -64,18 +64,24 @@ func (r *R) ValidatesPresence(names ...string) {
 	r.validators.extend(names, new(PresenceValidator))
 }
 
-func (r *R) ValidatesFormat(name, regexp string, opts ...FormatOptions) {
-	validator, err := NewFormatValidator(regexp, opts...)
+func (r *R) ValidatesFormat(name, regexp string, options ...FormatOptions) {
+	validator, err := NewFormatValidator(regexp, options...)
 	activesupport.Err(err).Unwrap()
 	r.validators.include(name, validator)
 }
 
-func (r *R) ValidatesInclusion(name string, slice activesupport.Slice) {
-	r.validators.include(name, NewInclusionValidator(slice))
+func (r *R) ValidatesLength(name string, options LengthOptions) {
+	validator, err := NewLengthValidator(options)
+	activesupport.Err(err).Unwrap()
+	r.validators.include(name, validator)
 }
 
-func (r *R) ValidatesExclusion(name string, slice activesupport.Slice) {
-	r.validators.include(name, NewExclusionValidator(slice))
+func (r *R) ValidatesInclusion(name string, options InclusionOptions) {
+	r.validators.include(name, NewInclusionValidator(options))
+}
+
+func (r *R) ValidatesExclusion(name string, options ExclusionOptions) {
+	r.validators.include(name, NewExclusionValidator(options))
 }
 
 func (r *R) Scope(reflection *Reflection) {

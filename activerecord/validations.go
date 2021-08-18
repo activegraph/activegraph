@@ -17,7 +17,7 @@ type ErrValidation struct {
 
 func (e ErrValidation) Error() string {
 	errors := strings.Join(e.Errors.FullMessages(), ", ")
-	return fmt.Sprintf("Model %v invalid%s", e.Model, errors)
+	return fmt.Sprintf("Model '%s' invalid%s", e.Model.Name(), errors)
 }
 
 type ErrInvalidValue struct {
@@ -27,11 +27,10 @@ type ErrInvalidValue struct {
 }
 
 func (e ErrInvalidValue) Error() string {
-	text := fmt.Sprintf("invalid value '%v' for attribute '%s'", e.Value, e.AttrName)
 	if len(e.Message) != 0 {
-		return fmt.Sprintf("%s, %s", text, e.Message)
+		return fmt.Sprintf("'%s' %s", e.AttrName, e.Message)
 	}
-	return text
+	return fmt.Sprintf("'%s' has invalid value '%v'", e.AttrName, e.Value)
 }
 
 type ErrInvalidType struct {
@@ -81,7 +80,7 @@ func (e *Errors) IsEmpty() bool {
 }
 
 func (e *Errors) Add(key string, err error) {
-	if e.errors != nil {
+	if e.errors == nil {
 		e.errors = make(map[string][]error)
 	}
 	errors := e.errors[key]
@@ -287,7 +286,7 @@ func (v FormatValidator) Validate(r *ActiveRecord, attrName string, val interfac
 	match := v.re.Match([]byte(s))
 	if (match && v.options.Without) || (!match && !v.options.Without) {
 		return ErrInvalidValue{
-			AttrName: attrName, Value: val, Message: "is invalid",
+			AttrName: attrName, Value: val, Message: "has invalid format",
 		}
 	}
 	return nil
@@ -297,8 +296,12 @@ type InclusionValidator struct {
 	in activesupport.Slice
 }
 
-func NewInclusionValidator(in activesupport.Slice) InclusionValidator {
-	return InclusionValidator{in: in}
+type InclusionOptions struct {
+	In activesupport.Slice
+}
+
+func NewInclusionValidator(options InclusionOptions) InclusionValidator {
+	return InclusionValidator{in: options.In}
 }
 
 func (v InclusionValidator) Validate(r *ActiveRecord, attrName string, val interface{}) error {
@@ -314,14 +317,69 @@ type ExclusionValidator struct {
 	from activesupport.Slice
 }
 
-func NewExclusionValidator(from activesupport.Slice) ExclusionValidator {
-	return ExclusionValidator{from: from}
+type ExclusionOptions struct {
+	From activesupport.Slice
+}
+
+func NewExclusionValidator(options ExclusionOptions) ExclusionValidator {
+	return ExclusionValidator{from: options.From}
 }
 
 func (v ExclusionValidator) Validate(r *ActiveRecord, attrName string, val interface{}) error {
 	if v.from.Contains(val) {
 		return ErrInvalidValue{
 			AttrName: attrName, Value: val, Message: "is reserved",
+		}
+	}
+	return nil
+}
+
+type LengthValidator struct {
+	minimum int
+	maximum int
+}
+
+type LengthOptions struct {
+	Minimum int
+	Maximum int
+}
+
+func NewLengthValidator(options LengthOptions) (*LengthValidator, error) {
+	if options.Maximum < options.Minimum {
+		return nil, activesupport.ErrArgument{Message: "maximum can't be less than minimum"}
+	}
+	if options.Minimum < 0 {
+		return nil, activesupport.ErrArgument{Message: "minimum can't be less than 0"}
+	}
+	return &LengthValidator{minimum: options.Minimum, maximum: options.Maximum}, nil
+}
+
+func (v LengthValidator) Validate(r *ActiveRecord, attrName string, val interface{}) error {
+	var length int
+	switch val := val.(type) {
+	case string:
+		length = len(val)
+	case []byte:
+		length = len(val)
+	case []rune:
+		length = len(val)
+	case nil:
+		return nil
+	default:
+		return ErrInvalidType{AttrName: attrName, TypeName: String, Value: val}
+	}
+	if length < v.minimum {
+		return ErrInvalidValue{
+			AttrName: attrName,
+			Value:    val,
+			Message:  fmt.Sprintf("is too short (minimum is %d characters)", v.minimum),
+		}
+	}
+	if length > v.maximum {
+		return ErrInvalidValue{
+			AttrName: attrName,
+			Value:    val,
+			Message:  fmt.Sprintf("is too long (maximum is %d characters)", v.maximum),
 		}
 	}
 	return nil
