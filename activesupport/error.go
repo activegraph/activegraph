@@ -24,10 +24,3 @@ type ErrArgument struct {
 func (e ErrArgument) Error() string {
 	return fmt.Sprintf("ErrArgument: %s", e.Message)
 }
-
-type ErrNext struct {
-}
-
-func (e ErrNext) Error() string {
-	return ""
-}

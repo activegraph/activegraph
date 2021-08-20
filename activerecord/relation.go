@@ -59,7 +59,7 @@ func (r *R) AttrBoolean(name string) {
 	r.validators.include(name, new(BooleanValidator))
 }
 
-func (r *R) Validates(name string, validator Validator) {
+func (r *R) Validates(name string, validator AttributeValidator) {
 	if v, ok := validator.(activesupport.Initializer); ok {
 		err := v.Initialize()
 		activesupport.Err(err).Unwrap()
