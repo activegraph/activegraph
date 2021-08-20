@@ -59,29 +59,12 @@ func (r *R) AttrBoolean(name string) {
 	r.validators.include(name, new(BooleanValidator))
 }
 
-// Validates that the specified attributes are not blank.
-func (r *R) ValidatesPresence(names ...string) {
-	r.validators.extend(names, new(PresenceValidator))
-}
-
-func (r *R) ValidatesFormat(name, regexp string, options ...FormatOptions) {
-	validator, err := NewFormatValidator(regexp, options...)
-	activesupport.Err(err).Unwrap()
+func (r *R) Validates(name string, validator AttributeValidator) {
+	if v, ok := validator.(activesupport.Initializer); ok {
+		err := v.Initialize()
+		activesupport.Err(err).Unwrap()
+	}
 	r.validators.include(name, validator)
-}
-
-func (r *R) ValidatesLength(name string, options LengthOptions) {
-	validator, err := NewLengthValidator(options)
-	activesupport.Err(err).Unwrap()
-	r.validators.include(name, validator)
-}
-
-func (r *R) ValidatesInclusion(name string, options InclusionOptions) {
-	r.validators.include(name, NewInclusionValidator(options))
-}
-
-func (r *R) ValidatesExclusion(name string, options ExclusionOptions) {
-	r.validators.include(name, NewExclusionValidator(options))
 }
 
 func (r *R) Scope(reflection *Reflection) {

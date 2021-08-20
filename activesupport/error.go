@@ -9,7 +9,10 @@ type ErrMultipleVariadicArguments struct {
 }
 
 func (e *ErrMultipleVariadicArguments) Error() string {
-	return fmt.Sprintf("Only one variadic argument for '%s' permitted", e.Name)
+	return fmt.Sprintf(
+		"ErrMultipleVariadicArguments: only one variadic argument for '%s' permitted",
+		e.Name,
+	)
 }
 
 // ErrArgument is returned when the arguments are wrong.
