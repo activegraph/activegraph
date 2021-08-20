@@ -40,3 +40,8 @@ var blankStringRe = regexp.MustCompile(`\A[[:space:]]*\z`)
 func (s String) IsBlank() bool {
 	return blankStringRe.Match([]byte(s))
 }
+
+// IsEmpty returns true when lenght of string is zero, and false otherwise.
+func (s String) IsEmpty() bool {
+	return len(s) == 0
+}
