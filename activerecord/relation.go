@@ -67,6 +67,10 @@ func (r *R) Validates(name string, validator AttributeValidator) {
 	r.validators.include(name, validator)
 }
 
+func (r *R) ValidatesPresence(names ...string) {
+	r.validators.extend(names, new(Presence))
+}
+
 func (r *R) Scope(reflection *Reflection) {
 	if reflection == nil {
 		panic("nil reflection")
