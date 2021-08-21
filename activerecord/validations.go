@@ -223,15 +223,26 @@ func (v BooleanValidator) ValidateAttribute(r *ActiveRecord, attrName string, va
 	return nil
 }
 
-// Presence validate that specified value is not blank.
+// Presence validates that specified value of the attribute is not blank (as defined
+// by activesupport.IsBlank).
+//
+//	Supplier := activerecord.New("supplier", func(r *activerecord.R) {
+//		r.HasOne("account")
+//		r.Validates("account", &activegraph.Presence{})
+//	})
+//
+// The account attribute must be in the object and it cannot be blank.
 type Presence struct {
-	AllowNil   bool
-	AllowBlank bool
+	AllowNil bool
 }
 
-func (p *Presence) AllowsNil() bool   { return p.AllowNil }
-func (p *Presence) AllowsBlank() bool { return p.AllowBlank }
+// AllowsNil returns true if nil values are allowed, and false otherwise.
+func (p *Presence) AllowsNil() bool { return p.AllowNil }
 
+// AllowsBlank returns false, since blank values are not allowed for this validator.
+func (p *Presence) AllowsBlank() bool { return false }
+
+// ValidateAttribute returns ErrInvalidValue when specified value is blank.
 func (p *Presence) ValidateAttribute(r *ActiveRecord, attrName string, val interface{}) error {
 	if activesupport.IsBlank(val) {
 		return ErrInvalidValue{AttrName: attrName, Value: val, Message: "can't be blank"}
@@ -239,6 +250,24 @@ func (p *Presence) ValidateAttribute(r *ActiveRecord, attrName string, val inter
 	return nil
 }
 
+// Format validates that specified value of the attribute is of the correct form, going
+// by the regular expression provided.
+//
+// Use `With` property to require that the attribute matches the regular expression:
+//
+//	Supplier := activerecord.New("supplier", func(r *activerecord.R) {
+//		r.Validates("name", &activerecord.Format{With: `[a-z]+`})
+//	})
+//
+// Use `Without` property to require that the attribute does not match the regular
+// epxression:
+//
+//	Supplier := activerecord.New("supplier", func(r *activerecord.R) {
+//		r.Validates("phone", &activerecord.Format{Without: `[a-zA-Z]`})
+//	})
+//
+// You must pass either `With` or `Without` as parameters. When both are empty strings
+// or both expressions are specified, an error ErrArgument is returned.
 type Format struct {
 	With    activesupport.String
 	Without activesupport.String
@@ -249,9 +278,15 @@ type Format struct {
 	re *regexp.Regexp
 }
 
-func (f *Format) AllowsNil() bool   { return f.AllowNil }
+// AllowsNil returns true when nil values are allowed, and false otherwise.
+func (f *Format) AllowsNil() bool { return f.AllowNil }
+
+// AllowsBlank returns true when blank values are allowed, and false otherwise.
 func (f *Format) AllowsBlank() bool { return f.AllowBlank }
 
+// Initialize ensures the correctness of the parameters and compiles the given regular
+// expression. When parameters are not valid, or regular expression is not compilable,
+// method returns an error.
 func (f *Format) Initialize() (err error) {
 	if (f.With.IsEmpty() && f.Without.IsEmpty()) || (!f.With.IsEmpty() && !f.Without.IsEmpty()) {
 		return activesupport.ErrArgument{
@@ -268,6 +303,10 @@ func (f *Format) Initialize() (err error) {
 	return err
 }
 
+// ValidateAttribute validates that the given value is in the required format.
+//
+// When value type is not a string, method returns ErrInvlidType error. In case of
+// failed validation, method returns ErrInvalidValue error.
 func (f *Format) ValidateAttribute(r *ActiveRecord, attrName string, val interface{}) error {
 	s, ok := val.(string)
 	if !ok {
@@ -283,6 +322,11 @@ func (f *Format) ValidateAttribute(r *ActiveRecord, attrName string, val interfa
 	return nil
 }
 
+// Inclusion validates that the specified value of the attribute is available in a slice.
+//
+//	Supplier := activerecord.New("supplier", func(r *activerecord.R) {
+//		r.Validates("state", &activerecord.Inclusion{In: activesupport.Strings("NY", "MA")})
+//	})
 type Inclusion struct {
 	In activesupport.Slice
 
@@ -290,9 +334,14 @@ type Inclusion struct {
 	AllowBlank bool
 }
 
-func (i *Inclusion) AllowsNil() bool   { return i.AllowNil }
+// AllowsNil returnd true when nil values are allowed, and false otherwise.
+func (i *Inclusion) AllowsNil() bool { return i.AllowNil }
+
+// AllowsBlank returns true when blank values are allowed, and false otherwise.
 func (i *Inclusion) AllowsBlank() bool { return i.AllowBlank }
 
+// ValidateAttribute validates that the given value is in the provided slice. When it's
+// not, method returns ErrInvalidValue error.
 func (i *Inclusion) ValidateAttribute(r *ActiveRecord, attrName string, val interface{}) error {
 	if !i.In.Contains(val) {
 		return ErrInvalidValue{
@@ -302,6 +351,11 @@ func (i *Inclusion) ValidateAttribute(r *ActiveRecord, attrName string, val inte
 	return nil
 }
 
+// Exclusion validates that specified value of the attribute is not in a slice.
+//
+//	Supplier := activerecord.New("supplier", func(r *activerecord.R) {
+//		r.Validates("password", &activerecord.Exclusion{From: activesupport.Strings("12345678")})
+//	})
 type Exclusion struct {
 	From activesupport.Slice
 
@@ -309,9 +363,14 @@ type Exclusion struct {
 	AllowBlank bool
 }
 
-func (e *Exclusion) AllowsNil() bool   { return e.AllowNil }
+// AllowsNil returns true when nil values are allowed, and false otherwise.
+func (e *Exclusion) AllowsNil() bool { return e.AllowNil }
+
+// AllowsBlank returns true when blank values are allowed, and false otherwise.
 func (e *Exclusion) AllowsBlank() bool { return e.AllowBlank }
 
+// ValidateAttribute validates that the specified value is not in a slice. When it is,
+// method returns ErrInvalidValue error.
 func (e *Exclusion) ValidateAttribute(r *ActiveRecord, attrName string, val interface{}) error {
 	if e.From.Contains(val) {
 		return ErrInvalidValue{AttrName: attrName, Value: val, Message: "is reserved"}
@@ -319,18 +378,34 @@ func (e *Exclusion) ValidateAttribute(r *ActiveRecord, attrName string, val inte
 	return nil
 }
 
+// Length validates that the specified value of the attribute match the length
+// restrictions supplied.
+//
+//	Supplier := activerecord.New("supplier", func(r *activerecord.R) {
+//		r.Validates("phone", &activerecord.Length{Minumum: 7, Maximum: 32})
+//		r.Validates("zip_code", &activerecord.Length{Minimum: 5})
+//	})
 type Length struct {
+	// Minimum is the minimum length of the attribute.
 	Minimum int
+	// Maximum is the maximum length of the attribute.
 	Maximum int
 
 	// AllowNil skips validation, when attribute is nil.
-	AllowNil   bool
+	AllowNil bool
+	// AllowBlank skips validation, when attribute is blank.
 	AllowBlank bool
 }
 
-func (l *Length) AllowsNil() bool   { return l.AllowNil }
+// AllowsNil returns true when nil values are allowed, and false otherwise.
+func (l *Length) AllowsNil() bool { return l.AllowNil }
+
+// AllowsBlank returns true when blank values are allowed, and false otherwise.
 func (l *Length) AllowsBlank() bool { return l.AllowBlank }
 
+// Initialize ensures the correctness of the parameters. When parameters are not valid:
+// both `Mininum` and `Maximum` must be positive numbers, and `Minimum < Maximum`,
+// method returns ErrArgument error.
 func (l *Length) Initialize() error {
 	if l.Maximum < l.Minimum {
 		return activesupport.ErrArgument{
@@ -345,6 +420,10 @@ func (l *Length) Initialize() error {
 	return nil
 }
 
+// ValidateAttribute validates that the specified value comply the length restrictions.
+//
+// Method returns ErrInvalidType for non-character-based types and ErrInvalidValue, when
+// length restrictions are not met.
 func (l *Length) ValidateAttribute(r *ActiveRecord, attrName string, val interface{}) error {
 	var length int
 	switch val := val.(type) {
