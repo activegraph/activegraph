@@ -16,6 +16,8 @@ func IsBlank(value interface{}) bool {
 		s = String(string(value))
 	case []byte:
 		s = String(string(value))
+	case nil:
+		return true
 	default:
 		return false
 	}
