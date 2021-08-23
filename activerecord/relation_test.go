@@ -40,6 +40,18 @@ func initBookTable(t *testing.T, conn activerecord.Conn) {
 	require.NoError(t, err)
 }
 
+func initProductTable(t *testing.T, conn activerecord.Conn) {
+	err := conn.Exec(context.TODO(), `
+		CREATE TABLE products (
+			id 			INTEGER NOT NULL,
+			name		VARCHAR,
+
+			PRIMARY KEY(id)
+		);
+	`)
+	require.NoError(t, err)
+}
+
 func TestRelation_New(t *testing.T) {
 	conn, _ := activerecord.EstablishConnection(activerecord.DatabaseConfig{
 		Adapter:  "sqlite3",
@@ -60,26 +72,43 @@ func TestRelation_New(t *testing.T) {
 }
 
 func TestRelation_New_WithoutParams(t *testing.T) {
-	Product := activerecord.New("product", func(r *activerecord.R) {
-		r.AttrString("name")
+	conn, err := activerecord.EstablishConnection(activerecord.DatabaseConfig{
+		Adapter:  "sqlite3",
+		Database: ":memory:",
 	})
+
+	require.NoError(t, err)
+
+	defer activerecord.RemoveConnection("primary")
+	initProductTable(t, conn)
+
+	Product := activerecord.New("product")
 
 	p := Product.New().UnwrapRecord()
 	require.NoError(t, p.AssignAttribute("name", "Holy Grail"))
 }
 
 func TestRelation_New_MultipleParams(t *testing.T) {
+	conn, err := activerecord.EstablishConnection(activerecord.DatabaseConfig{
+		Adapter:  "sqlite3",
+		Database: ":memory:",
+	})
+	require.NoError(t, err)
+
+	defer activerecord.RemoveConnection("primary")
+	initProductTable(t, conn)
+
 	Product := activerecord.New("product", func(r *activerecord.R) {})
 	p := Product.New(activesupport.Hash{}, activesupport.Hash{})
 
 	require.Error(t, p.Err())
 
-	err := &activesupport.ErrMultipleVariadicArguments{Name: "params"}
+	err = &activesupport.ErrMultipleVariadicArguments{Name: "params"}
 	require.Equal(t, err.Error(), p.Err().Error())
 }
 
 func TestRelation_Limit(t *testing.T) {
-	activerecord.EstablishConnection(activerecord.DatabaseConfig{
+	conn, _ := activerecord.EstablishConnection(activerecord.DatabaseConfig{
 		Adapter:  "sqlite3",
 		Database: t.Name() + ".db",
 	})
@@ -87,12 +116,9 @@ func TestRelation_Limit(t *testing.T) {
 	defer os.Remove(t.Name() + ".db")
 	defer activerecord.RemoveConnection("primary")
 
-	Author := activerecord.New("author", func(r *activerecord.R) {
-		r.AttrString("name")
-	})
+	initAuthorTable(t, conn)
 
-	initAuthorTable(t, Author.Connection())
-
+	Author := activerecord.New("author")
 	authors, err := Author.InsertAll(
 		Hash{"name": "First"}, Hash{"name": "Second"},
 		Hash{"name": "Third"}, Hash{"name": "Fourth"},
@@ -106,33 +132,36 @@ func TestRelation_Limit(t *testing.T) {
 }
 
 func TestRelation_TransactionalInsert(t *testing.T) {
-	activerecord.EstablishConnection(activerecord.DatabaseConfig{
+	conn, err := activerecord.EstablishConnection(activerecord.DatabaseConfig{
 		Adapter:  "sqlite3",
 		Database: t.Name() + ".db",
 	})
+	require.NoError(t, err)
 
 	defer os.Remove(t.Name() + ".db")
 	defer activerecord.RemoveConnection("primary")
 
+	initAuthorTable(t, conn)
+	initBookTable(t, conn)
+
 	Author := activerecord.New("author", func(r *activerecord.R) {
-		r.AttrString("name")
 		r.HasMany("book")
 	})
 
 	Book := activerecord.New("book", func(r *activerecord.R) {
-		r.AttrString("title")
-		r.AttrInt("year")
 		r.BelongsTo("author")
 	})
 
-	initAuthorTable(t, Author.Connection())
-	initBookTable(t, Book.Connection())
-
-	activerecord.Transaction(context.TODO(), func() error {
-		Author.Create(Hash{"name": "Max Tegmark"})
-		Book.Create(Hash{"title": "Life 3.0", "year": 2017, "author_id": 1})
-		return nil
+	err = activerecord.Transaction(context.TODO(), func() error {
+		_, err := Author.Create(Hash{"name": "Max Tegmark"})
+		if err != nil {
+			return err
+		}
+		_, err = Book.Create(Hash{"title": "Life 3.0", "year": 2017, "author_id": 1})
+		return err
 	})
+
+	require.NoError(t, err)
 
 	authors, err := Author.All().ToA()
 	require.NoError(t, err)

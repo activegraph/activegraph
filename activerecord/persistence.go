@@ -2,9 +2,18 @@ package activerecord
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/activegraph/activegraph/activesupport"
 )
+
+type ErrTableNotFound struct {
+	TableName string
+}
+
+func (e ErrTableNotFound) Error() string {
+	return fmt.Sprintf("ErrTableNotFound: '%s'", e.TableName)
+}
 
 type Persistence interface {
 	Insert() (*ActiveRecord, error)

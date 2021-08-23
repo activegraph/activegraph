@@ -52,18 +52,15 @@ func TestRelation_JoinsOK(t *testing.T) {
 	require.NoError(t, err)
 
 	Author := activerecord.New("author", func(r *activerecord.R) {
-		r.AttrString("name")
 		r.HasMany("book")
 	})
 
 	Book := activerecord.New("book", func(r *activerecord.R) {
-		r.AttrString("title")
 		r.BelongsTo("author")
 		r.BelongsTo("publisher")
 	})
 
 	Publisher := activerecord.New("publisher", func(r *activerecord.R) {
-		r.AttrString("name")
 		r.HasMany("book")
 	})
 

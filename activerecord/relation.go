@@ -39,24 +39,9 @@ func (r *R) PrimaryKey(name string) {
 	r.primaryKey = name
 }
 
-func (r *R) AttrInt(name string) {
-	r.attrs[name] = IntAttr{Name: name}
-	r.validators.include(name, new(IntValidator))
-}
-
-func (r *R) AttrString(name string) {
-	r.attrs[name] = StringAttr{Name: name}
-	r.validators.include(name, new(StringValidator))
-}
-
-func (r *R) AttrFloat(name string) {
-	r.attrs[name] = FloatAttr{Name: name}
-	r.validators.include(name, new(FloatValidator))
-}
-
-func (r *R) AttrBoolean(name string) {
-	r.attrs[name] = BooleanAttr{Name: name}
-	r.validators.include(name, new(BooleanValidator))
+func (r *R) defineAttribute(attr Attribute, validator AttributeValidator) {
+	r.attrs[attr.AttributeName()] = attr
+	r.validators.include(attr.AttributeName(), validator)
 }
 
 func (r *R) Validates(name string, validator AttributeValidator) {
@@ -86,7 +71,7 @@ func (r *R) BelongsTo(name string, init ...func(*BelongsTo)) {
 	case 1:
 		init[0](&assoc)
 	default:
-		panic("multiple initializations passed")
+		panic(activesupport.ErrMultipleVariadicArguments{Name: "init"})
 	}
 
 	r.attrs[assoc.AssociationForeignKey()] = IntAttr{
@@ -97,6 +82,10 @@ func (r *R) BelongsTo(name string, init ...func(*BelongsTo)) {
 
 func (r *R) HasMany(name string) {
 	r.assocs[name] = &HasMany{name: name}
+}
+
+func (r *R) HasOne(name string) {
+	r.assocs[name] = &HasOne{name: name}
 }
 
 func (r *R) init(ctx context.Context, tableName string) error {
@@ -113,13 +102,13 @@ func (r *R) init(ctx context.Context, tableName string) error {
 	for _, column := range definitions {
 		switch column.Type {
 		case "integer":
-			r.AttrInt(column.Name)
+			r.defineAttribute(IntAttr{Name: column.Name}, new(IntValidator))
 		case "varchar":
-			r.AttrString(column.Name)
+			r.defineAttribute(StringAttr{Name: column.Name}, new(StringValidator))
 		case "float":
-			r.AttrFloat(column.Name)
+			r.defineAttribute(FloatAttr{Name: column.Name}, new(FloatValidator))
 		case "boolean":
-			r.AttrBoolean(column.Name)
+			r.defineAttribute(BooleanAttr{Name: column.Name}, new(BooleanValidator))
 		}
 
 		if column.IsPrimaryKey {
@@ -174,9 +163,11 @@ func Initialize(name string, init func(*R)) (*Relation, error) {
 		connections: globalConnectionHandler,
 	}
 
-	if init == nil {
-		r.init(context.TODO(), name+"s")
-	} else {
+	err := r.init(context.TODO(), name+"s")
+	if err != nil {
+		return nil, err
+	}
+	if init != nil {
 		init(&r)
 	}
 

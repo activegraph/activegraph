@@ -2,6 +2,7 @@ package activerecord_test
 
 import (
 	"context"
+	"os"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -20,37 +21,6 @@ func TestActiveRecord_Insert(t *testing.T) {
 	require.NoError(t, err)
 
 	defer activerecord.RemoveConnection("primary")
-
-	Author := activerecord.New("author", func(r *activerecord.R) {
-		r.AttrString("name")
-		r.HasMany("book")
-	})
-
-	Book := activerecord.New("book", func(r *activerecord.R) {
-		r.PrimaryKey("uid")
-		r.AttrInt("uid")
-		r.AttrString("title")
-		r.AttrInt("year")
-
-		r.BelongsTo("author", func(assoc *activerecord.BelongsTo) {
-			assoc.ForeignKey("author_id")
-		})
-		r.BelongsTo("publisher")
-	})
-
-	Publisher := activerecord.New("publisher", func(r *activerecord.R) {
-		r.AttrString("name")
-		r.HasMany("book")
-	})
-	_ = Publisher
-
-	author1 := Author.New(Hash{"name": "Herman Melville"})
-	author2 := Author.New(Hash{"name": "Noah Harari"})
-
-	book1 := Book.New(Hash{"title": "Bill Budd", "year": 1846, "author_id": 1})
-	book2 := Book.New(Hash{"title": "Moby Dick", "year": 1851, "author_id": 1})
-	book3 := Book.New(Hash{"title": "Omoo", "year": 1847, "author_id": 1})
-	book4 := Book.New(Hash{"title": "Sapiens", "year": 2015, "author_id": 2})
 
 	err = conn.Exec(
 		context.TODO(), `
@@ -80,6 +50,32 @@ func TestActiveRecord_Insert(t *testing.T) {
 		`,
 	)
 	require.NoError(t, err)
+
+	Author := activerecord.New("author", func(r *activerecord.R) {
+		r.HasMany("book")
+	})
+
+	Book := activerecord.New("book", func(r *activerecord.R) {
+		r.PrimaryKey("uid")
+
+		r.BelongsTo("author", func(assoc *activerecord.BelongsTo) {
+			assoc.ForeignKey("author_id")
+		})
+		r.BelongsTo("publisher")
+	})
+
+	Publisher := activerecord.New("publisher", func(r *activerecord.R) {
+		r.HasMany("book")
+	})
+	_ = Publisher
+
+	author1 := Author.New(Hash{"name": "Herman Melville"})
+	author2 := Author.New(Hash{"name": "Noah Harari"})
+
+	book1 := Book.New(Hash{"title": "Bill Budd", "year": 1846, "author_id": 1})
+	book2 := Book.New(Hash{"title": "Moby Dick", "year": 1851, "author_id": 1})
+	book3 := Book.New(Hash{"title": "Omoo", "year": 1847, "author_id": 1})
+	book4 := Book.New(Hash{"title": "Sapiens", "year": 2015, "author_id": 2})
 
 	author1 = author1.Insert()
 	author2 = author2.Insert()
@@ -128,4 +124,60 @@ func TestActiveRecord_Insert(t *testing.T) {
 	t.Log(bb[1], bb[1].Association("author"))
 	t.Log(bb[2], bb[2].Association("author"))
 	t.Log(bb[3], bb[3].Association("author"))
+}
+
+func TestActiveRecord_HasOne_AccessAssociation(t *testing.T) {
+	conn, err := activerecord.EstablishConnection(activerecord.DatabaseConfig{
+		Adapter:  "sqlite3",
+		Database: t.Name() + ".db",
+	})
+	require.NoError(t, err)
+
+	defer os.Remove(t.Name() + ".db")
+	defer activerecord.RemoveConnection("primary")
+
+	err = conn.Exec(
+		context.TODO(), `
+		CREATE TABLE suppliers (
+			id  		 INTEGER NOT NULL,
+			name		 VARCHAR,
+
+			PRIMARY KEY(id)
+		);
+		CREATE TABLE accounts (
+			id      	INTEGER NOT NULL,
+			supplier_id INTEGER,
+			number		INTEGER,
+
+			PRIMARY KEY(id),
+			FOREIGN KEY(supplier_id) REFERENCES suppliers(id)
+		);
+		`,
+	)
+	require.NoError(t, err)
+
+	Supplier := activerecord.New("supplier", func(r *activerecord.R) {
+		r.HasOne("account")
+	})
+
+	Account := activerecord.New("account", func(r *activerecord.R) {
+		r.BelongsTo("supplier")
+	})
+
+	suppliers, err := Supplier.InsertAll(
+		Hash{"name": "Amazon"},
+		Hash{"name": "Wallmart"},
+	)
+	require.NoError(t, err)
+
+	accounts, err := Account.InsertAll(
+		Hash{"number": 10, "supplier_id": suppliers[0].ID()},
+		Hash{"number": 20, "supplier_id": suppliers[1].ID()},
+	)
+	require.NoError(t, err)
+
+	t.Log(accounts)
+
+	account := suppliers[0].Association("account")
+	require.Equal(t, accounts[0].ID(), account.ID())
 }
