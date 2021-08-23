@@ -8,7 +8,7 @@ type ErrMultipleVariadicArguments struct {
 	Name string
 }
 
-func (e *ErrMultipleVariadicArguments) Error() string {
+func (e ErrMultipleVariadicArguments) Error() string {
 	return fmt.Sprintf(
 		"ErrMultipleVariadicArguments: only one variadic argument for '%s' permitted",
 		e.Name,

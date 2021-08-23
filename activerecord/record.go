@@ -156,7 +156,6 @@ func (r *ActiveRecord) AccessAssociation(assocName string) (*ActiveRecord, error
 	}
 
 	assocId := r.AccessAttribute(reflection.AssociationForeignKey())
-	// rec, err := reflection.Relation.WithContext(r.Context()).Find(assocId)
 	result := reflection.Relation.WithContext(r.Context()).Find(assocId)
 	if result.Err() != nil {
 		return nil, result.Err()
@@ -178,6 +177,7 @@ func (r *ActiveRecord) AssignAssociation(assocName string, rec *ActiveRecord) er
 
 // Association returns the associated object, nil is returned if none is found.
 func (r *ActiveRecord) Association(assocName string) *ActiveRecord {
+	// TODO: Use "Result.UnwrapRecord".
 	rec, _ := r.AccessAssociation(assocName)
 	return rec
 }

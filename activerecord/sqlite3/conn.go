@@ -196,5 +196,8 @@ func (c *Conn) ColumnDefinitions(ctx context.Context, tableName string) (
 			IsPrimaryKey: pk == 1,
 		})
 	}
+	if len(definitions) == 0 {
+		return nil, activerecord.ErrTableNotFound{TableName: tableName}
+	}
 	return definitions, nil
 }

@@ -65,6 +65,19 @@ func (a *HasMany) AssociationForeignKey() string {
 	return strings.ToLower(a.name) + "_" + defaultPrimaryKeyName
 }
 
+type HasOne struct {
+	name string
+}
+
+func (a *HasOne) AssociationName() string {
+	return a.name
+}
+
+func (a *HasOne) AssociationForeignKey() string {
+	// TODO: return actual table's primary key.
+	return defaultPrimaryKeyName
+}
+
 type associationsMap map[string]Association
 
 func (m associationsMap) copy() associationsMap {
