@@ -6,10 +6,24 @@ import (
 	"github.com/activegraph/activegraph/activerecord"
 )
 
+type QueryAttribute struct {
+	AttributeName    string
+	NestedAttributes []QueryAttribute
+}
+
+func (qa QueryAttribute) NestedAttributeNames() []string {
+	names := make([]string, len(qa.NestedAttributes))
+	for i := range qa.NestedAttributes {
+		names[i] = qa.NestedAttributes[i].AttributeName
+	}
+	return names
+}
+
 type Context struct {
 	context.Context
 
-	Params Parameters
+	Params    Parameters
+	Selection []QueryAttribute
 }
 
 // Result defines a contract that represents the result of action method.

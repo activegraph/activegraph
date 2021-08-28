@@ -12,6 +12,7 @@ type AbstractModel interface {
 	AttributeNames() []string
 	AttributeForInspect(attrName string) activerecord.Attribute
 	AttributesForInspect(attrNames ...string) []activerecord.Attribute
+	ReflectOnAllAssociations() []*activerecord.AssociationReflection
 }
 
 type AbstractController interface {
