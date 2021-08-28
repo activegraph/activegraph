@@ -5,18 +5,27 @@ import (
 	"strings"
 )
 
+type ErrAssociation struct {
+	Message string
+}
+
+func (e ErrAssociation) Error() string {
+	return e.Message
+}
+
 type ErrUnknownAssociation struct {
 	RecordName string
 	Assoc      string
 }
 
-func (e *ErrUnknownAssociation) Error() string {
+func (e ErrUnknownAssociation) Error() string {
 	return fmt.Sprintf("unknown association %q for %s", e.Assoc, e.RecordName)
 }
 
 type Association interface {
 	AssociationName() string
 	AssociationForeignKey() string
+	AccessAssociation(*Relation, *ActiveRecord) Result
 }
 
 type AssociationReflection struct {
@@ -49,6 +58,15 @@ func (a *BelongsTo) AssociationForeignKey() string {
 	return strings.ToLower(a.name) + "_" + defaultPrimaryKeyName
 }
 
+func (a *BelongsTo) AccessAssociation(rel *Relation, r *ActiveRecord) Result {
+	assocId := r.AccessAttribute(a.AssociationForeignKey())
+	return rel.WithContext(r.Context()).Find(assocId)
+}
+
+func (a *BelongsTo) String() string {
+	return fmt.Sprintf("#<Association type: 'belongs_to', name: '%s'>", a.name)
+}
+
 type HasMany struct {
 	name       string
 	foreignKey string
@@ -65,6 +83,14 @@ func (a *HasMany) AssociationForeignKey() string {
 	return strings.ToLower(a.name) + "_" + defaultPrimaryKeyName
 }
 
+func (a *HasMany) AccessAssociation(rel *Relation, r *ActiveRecord) Result {
+	return Err(fmt.Errorf("not implemented"))
+}
+
+func (a *HasMany) String() string {
+	return fmt.Sprintf("#<Association type: 'has_many', name: '%s'>", a.name)
+}
+
 type HasOne struct {
 	name string
 }
@@ -76,6 +102,28 @@ func (a *HasOne) AssociationName() string {
 func (a *HasOne) AssociationForeignKey() string {
 	// TODO: return actual table's primary key.
 	return defaultPrimaryKeyName
+}
+
+func (a *HasOne) AccessAssociation(rel *Relation, r *ActiveRecord) Result {
+	rel = rel.WithContext(r.Context()).Where(r.name+"_id", r.ID())
+	records, err := rel.ToA()
+	if err != nil {
+		return Err(err)
+	}
+	switch len(records) {
+	case 0:
+		return rel.New()
+	case 1:
+		return Ok(records[0])
+	default:
+		return Err(ErrAssociation{
+			fmt.Sprintf("declared 'has_one' association, but has many: %s", records),
+		})
+	}
+}
+
+func (a *HasOne) String() string {
+	return fmt.Sprintf("#<Assocation type: 'has_one', name: '%s'>", a.name)
 }
 
 type associationsMap map[string]Association

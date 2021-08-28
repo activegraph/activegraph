@@ -7,9 +7,10 @@ import (
 
 	"github.com/activegraph/activegraph/actioncontroller"
 	"github.com/activegraph/activegraph/activerecord"
+	"github.com/davecgh/go-spew/spew"
+	"github.com/graphql-go/graphql/language/ast"
 
 	"github.com/graphql-go/graphql"
-	"github.com/graphql-go/handler"
 )
 
 type ErrConstraintNotFound struct {
@@ -53,13 +54,37 @@ func argsconv(attrs []activerecord.Attribute) graphql.FieldConfigArgument {
 	return args
 }
 
-func objconv(name string, attrs []activerecord.Attribute) *graphql.Object {
+func payloadconv(name string, attrs []activerecord.Attribute) *graphql.Object {
 	fields := make(graphql.Fields, len(attrs))
 	for _, attr := range attrs {
 		fields[attr.AttributeName()] = &graphql.Field{
 			Name: attr.AttributeName(), Type: typeconv(attr.CastType()),
 		}
 	}
+	return graphql.NewObject(graphql.ObjectConfig{Name: name, Fields: fields})
+}
+
+func objconv(name string, model *activerecord.Relation, viewed map[string]struct{}) *graphql.Object {
+	attrs := model.AttributesForInspect()
+	fields := make(graphql.Fields, len(attrs))
+
+	for _, attr := range attrs {
+		fields[attr.AttributeName()] = &graphql.Field{
+			Name: attr.AttributeName(), Type: typeconv(attr.CastType()),
+		}
+	}
+
+	viewed[name] = struct{}{}
+	for _, assoc := range model.ReflectOnAllAssociations() {
+		if _, ok := viewed[strings.Title(assoc.AssociationName())]; ok {
+			continue
+		}
+		fields[assoc.AssociationName()] = &graphql.Field{
+			Name: assoc.AssociationName(),
+			Type: objconv(strings.Title(assoc.AssociationName()), assoc.Relation, viewed),
+		}
+	}
+
 	return graphql.NewObject(graphql.ObjectConfig{Name: name, Fields: fields})
 }
 
@@ -75,11 +100,38 @@ type matching struct {
 	constraints actioncontroller.Constraints
 }
 
+func queryconv(selections []ast.Selection) []actioncontroller.QueryAttribute {
+	attrs := make([]actioncontroller.QueryAttribute, 0, len(selections))
+	for _, sel := range selections {
+		field, ok := sel.(*ast.Field)
+		if !ok {
+			continue
+		}
+
+		attr := actioncontroller.QueryAttribute{
+			AttributeName: field.Name.Value,
+		}
+		if field.SelectionSet != nil {
+			attr.NestedAttributes = queryconv(field.SelectionSet.Selections)
+		}
+		attrs = append(attrs, attr)
+	}
+	return attrs
+}
+
 func newResolveFunc(action actioncontroller.Action) graphql.FieldResolveFn {
 	return func(p graphql.ResolveParams) (interface{}, error) {
 		context := &actioncontroller.Context{
-			Context: p.Context, Params: actioncontroller.Parameters(p.Args),
+			Context: p.Context,
+			Params:  actioncontroller.Parameters(p.Args),
 		}
+
+		if len(p.Info.FieldASTs) > 0 {
+			selections := p.Info.FieldASTs[0].SelectionSet.Selections
+			context.Selection = queryconv(selections)
+		}
+
+		spew.Dump(context)
 		result := action.Process(context)
 		return result.Execute(context)
 	}
@@ -134,7 +186,7 @@ func (m *Mapper) newAction(
 	return &graphql.Field{
 		Name:    name,
 		Args:    argsconv(args),
-		Type:    objconv(strings.Title(name)+"Payload", result),
+		Type:    payloadconv(strings.Title(name)+"Payload", result),
 		Resolve: newResolveFunc(action),
 	}
 }
@@ -219,7 +271,10 @@ func (m *Mapper) Map() (http.Handler, error) {
 
 	for _, resource := range m.resources {
 		output := objconv(
-			strings.Title(resource.model.Name()), resource.model.AttributesForInspect(),
+			strings.Title(resource.model.Name()),
+			resource.model.(*activerecord.Relation),
+			// TODO: rework without recursion.
+			make(map[string]struct{}),
 		)
 
 		for _, action := range resource.controller.ActionMethods() {
@@ -272,13 +327,7 @@ func (m *Mapper) Map() (http.Handler, error) {
 		return nil, err
 	}
 
-	h := handler.New(&handler.Config{
-		Schema:   &schema,
-		Pretty:   true,
-		GraphiQL: true,
-	})
-
 	mux := http.NewServeMux()
-	mux.Handle("/graphql", h)
+	mux.Handle("/graphql", GraphQLHandler(schema))
 	return mux, nil
 }

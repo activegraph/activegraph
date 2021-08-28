@@ -32,6 +32,9 @@ type Result interface {
 
 	// AttributeMethods
 	// AttributeAccessors
+
+	// AssociationMethods
+	// AggregationMethods
 }
 
 func Return(r *ActiveRecord, err error) Result {
@@ -152,11 +155,10 @@ func (r *ActiveRecord) AccessAssociation(assocName string) (*ActiveRecord, error
 
 	reflection := r.ReflectOnAssociation(assocName)
 	if reflection == nil {
-		return nil, &ErrUnknownAssociation{RecordName: r.name, Assoc: assocName}
+		return nil, ErrUnknownAssociation{RecordName: r.name, Assoc: assocName}
 	}
 
-	assocId := r.AccessAttribute(reflection.AssociationForeignKey())
-	result := reflection.Relation.WithContext(r.Context()).Find(assocId)
+	result := reflection.AccessAssociation(reflection.Relation, r)
 	if result.Err() != nil {
 		return nil, result.Err()
 	}
@@ -168,7 +170,7 @@ func (r *ActiveRecord) AccessAssociation(assocName string) (*ActiveRecord, error
 
 func (r *ActiveRecord) AssignAssociation(assocName string, rec *ActiveRecord) error {
 	if !r.HasAssociation(assocName) {
-		return &ErrUnknownAssociation{RecordName: r.name, Assoc: assocName}
+		return ErrUnknownAssociation{RecordName: r.name, Assoc: assocName}
 	}
 
 	r.associationRecords[assocName] = rec
@@ -177,20 +179,18 @@ func (r *ActiveRecord) AssignAssociation(assocName string, rec *ActiveRecord) er
 
 // Association returns the associated object, nil is returned if none is found.
 func (r *ActiveRecord) Association(assocName string) *ActiveRecord {
-	// TODO: Use "Result.UnwrapRecord".
-	rec, _ := r.AccessAssociation(assocName)
-	return rec
+	return Return(r.AccessAssociation(assocName)).UnwrapRecord()
 }
 
 func (r *ActiveRecord) AccessCollection(assocName string) (*Relation, error) {
 	foreignRef := r.ReflectOnAssociation(assocName)
 	if foreignRef == nil {
-		return nil, &ErrUnknownAssociation{RecordName: r.name, Assoc: assocName}
+		return nil, ErrUnknownAssociation{RecordName: r.name, Assoc: assocName}
 	}
 
 	selfRef := foreignRef.Relation.ReflectOnAssociation(r.name)
 	if selfRef == nil {
-		return nil, &ErrUnknownAssociation{RecordName: foreignRef.Relation.Name(), Assoc: r.name}
+		return nil, ErrUnknownAssociation{RecordName: foreignRef.Relation.Name(), Assoc: r.name}
 	}
 
 	rel := foreignRef.Relation.WithContext(r.Context())

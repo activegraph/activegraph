@@ -1,4 +1,4 @@
-package activegraph
+package graphql
 
 import (
 	"context"
@@ -232,19 +232,11 @@ func DefaultHandler(rw ResponseWriter, r *Request) {
 	rw.Write(result)
 }
 
-const (
-	// GraphQL operations.
-	OperationQuery        = "query"        // a read-only fetch.
-	OperationMutation     = "mutation"     // a write followed by fetch.
-	OperationSubscription = "subscription" // unsupported yet.
-	OperationUnknown      = ""
-)
-
 func graphqlHandler(h Handler, schema graphql.Schema) http.HandlerFunc {
 	return func(rw http.ResponseWriter, r *http.Request) {
 		acceptHeader := r.Header.Get("Accept")
 		if _, ok := r.URL.Query()["raw"]; !ok && strings.Contains(acceptHeader, "text/html") {
-			handlePlayground(rw, r)
+			handleGraphiQL(rw, r)
 			return
 		}
 
