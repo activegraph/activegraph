@@ -32,6 +32,15 @@ func (ss StringSlice) Contains(v interface{}) bool {
 	return false
 }
 
+func (ss StringSlice) Find(pred func(String) bool) String {
+	for i := range ss {
+		if pred(String(ss[i])) {
+			return String(ss[i])
+		}
+	}
+	return String("")
+}
+
 type String string
 
 var blankStringRe = regexp.MustCompile(`\A[[:space:]]*\z`)
@@ -44,4 +53,8 @@ func (s String) IsBlank() bool {
 // IsEmpty returns true when lenght of string is zero, and false otherwise.
 func (s String) IsEmpty() bool {
 	return len(s) == 0
+}
+
+func (s String) IsNotEmpty() bool {
+	return len(s) != 0
 }
