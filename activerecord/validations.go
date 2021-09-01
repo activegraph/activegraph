@@ -234,6 +234,9 @@ func (v BooleanValidator) ValidateAttribute(r *ActiveRecord, attrName string, va
 // The account attribute must be in the object and it cannot be blank.
 type Presence struct {
 	AllowNil bool
+
+	// Message is a custom error message (default is "can't be blank").
+	Message string
 }
 
 // AllowsNil returns true if nil values are allowed, and false otherwise.
@@ -245,7 +248,8 @@ func (p *Presence) AllowsBlank() bool { return false }
 // ValidateAttribute returns ErrInvalidValue when specified value is blank.
 func (p *Presence) ValidateAttribute(r *ActiveRecord, attrName string, val interface{}) error {
 	if activesupport.IsBlank(val) {
-		return ErrInvalidValue{AttrName: attrName, Value: val, Message: "can't be blank"}
+		message := activesupport.Strings(p.Message, "can't be blank").Find(activesupport.String.IsNotEmpty)
+		return ErrInvalidValue{AttrName: attrName, Value: val, Message: string(message)}
 	}
 	return nil
 }
