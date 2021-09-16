@@ -64,9 +64,9 @@ func (m validatorsMap) copy() validatorsMap {
 	return mm
 }
 
-func (m validatorsMap) include(attrName string, validator AttributeValidator) {
-	validators := m[attrName]
-	m[attrName] = append(validators, validator)
+func (m validatorsMap) include(attrName string, validators ...AttributeValidator) {
+	attrValidators := m[attrName]
+	m[attrName] = append(attrValidators, validators...)
 }
 
 func (m validatorsMap) extend(attrNames []string, validator AttributeValidator) {
@@ -152,73 +152,16 @@ func (v *validations) Errors() Errors {
 	return v.errors
 }
 
-type IntValidator func(v int64) error
-
-func (v IntValidator) AllowsNil() bool   { return true }
-func (v IntValidator) AllowsBlank() bool { return true }
-
-func (v IntValidator) ValidateAttribute(rec *ActiveRecord, attrName string, val interface{}) error {
-	var intval int64
-	switch val := val.(type) {
-	case int:
-		intval = int64(val)
-	case int32:
-		intval = int64(val)
-	case int64:
-		intval = val
-	default:
-		return ErrInvalidType{AttrName: attrName, TypeName: Int, Value: val}
-	}
-	if v != nil {
-		return v(intval)
-	}
-	return nil
+type typeValidator struct {
+	Type
 }
 
-type StringValidator func(s string) error
+func (v typeValidator) AllowsNil() bool   { return true }
+func (v typeValidator) AllowsBlank() bool { return true }
 
-func (v StringValidator) AllowsNil() bool   { return true }
-func (v StringValidator) AllowsBlank() bool { return true }
-
-func (v StringValidator) ValidateAttribute(rec *ActiveRecord, attrName string, val interface{}) error {
-	s, ok := val.(string)
-	if !ok {
-		return ErrInvalidType{AttrName: attrName, TypeName: String, Value: val}
-	}
-	if v != nil {
-		return v(s)
-	}
-	return nil
-}
-
-type FloatValidator func(f float64) error
-
-func (v FloatValidator) AllowsNil() bool   { return true }
-func (v FloatValidator) AllowsBlank() bool { return true }
-
-func (v FloatValidator) ValidateAttribute(r *ActiveRecord, attrName string, val interface{}) error {
-	f, ok := val.(float64)
-	if !ok {
-		return ErrInvalidType{AttrName: attrName, TypeName: Float, Value: val}
-	}
-	if v != nil {
-		return v(f)
-	}
-	return nil
-}
-
-type BooleanValidator func(b bool) error
-
-func (v BooleanValidator) AllowsNil() bool   { return true }
-func (v BooleanValidator) AllowsBlank() bool { return true }
-
-func (v BooleanValidator) ValidateAttribute(r *ActiveRecord, attrName string, val interface{}) error {
-	b, ok := val.(bool)
-	if !ok {
-		return ErrInvalidType{AttrName: attrName, TypeName: Boolean, Value: val}
-	}
-	if v != nil {
-		return v(b)
+func (v typeValidator) ValidateAttribute(rec *ActiveRecord, attrName string, val interface{}) error {
+	if _, err := v.Deserialize(val); err != nil {
+		return ErrInvalidType{AttrName: attrName, TypeName: v.String(), Value: val}
 	}
 	return nil
 }
@@ -279,6 +222,9 @@ type Format struct {
 	AllowNil   bool
 	AllowBlank bool
 
+	// Message is a customer error message (default is "has invalid format").
+	Message string
+
 	re *regexp.Regexp
 }
 
@@ -314,14 +260,13 @@ func (f *Format) Initialize() (err error) {
 func (f *Format) ValidateAttribute(r *ActiveRecord, attrName string, val interface{}) error {
 	s, ok := val.(string)
 	if !ok {
-		return ErrInvalidType{AttrName: attrName, TypeName: String, Value: val}
+		return ErrInvalidType{AttrName: attrName, TypeName: "String", Value: val}
 	}
 
 	match := f.re.Match([]byte(s))
 	if (match && !f.Without.IsEmpty()) || (!match && f.Without.IsEmpty()) {
-		return ErrInvalidValue{
-			AttrName: attrName, Value: val, Message: "has invalid format",
-		}
+		message := activesupport.Strings(f.Message, "has invalid format").Find(activesupport.String.IsNotEmpty)
+		return ErrInvalidValue{AttrName: attrName, Value: val, Message: string(message)}
 	}
 	return nil
 }
@@ -438,7 +383,7 @@ func (l *Length) ValidateAttribute(r *ActiveRecord, attrName string, val interfa
 	case []rune:
 		length = len(val)
 	default:
-		return ErrInvalidType{AttrName: attrName, TypeName: String, Value: val}
+		return ErrInvalidType{AttrName: attrName, TypeName: "String", Value: val}
 	}
 	if length < l.Minimum {
 		return ErrInvalidValue{

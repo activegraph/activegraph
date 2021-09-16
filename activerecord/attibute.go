@@ -9,13 +9,6 @@ import (
 	"github.com/activegraph/activegraph/activesupport"
 )
 
-const (
-	Int     = "int"
-	String  = "string"
-	Float   = "float"
-	Boolean = "boolean"
-)
-
 // primaryKey must implement attributes that are primary keys.
 type primaryKey interface {
 	PrimaryKey() bool
@@ -23,7 +16,7 @@ type primaryKey interface {
 
 type Attribute interface {
 	AttributeName() string
-	CastType() string
+	AttributeType() Type
 }
 
 type AttributeMethods interface {
@@ -52,33 +45,18 @@ func (p PrimaryKey) PrimaryKey() bool {
 	return true
 }
 
-type IntAttr struct {
+type attr struct {
 	Name string
+	Type Type
 }
 
-func (a IntAttr) AttributeName() string { return a.Name }
-func (a IntAttr) CastType() string      { return Int }
-
-type StringAttr struct {
-	Name string
+func (a attr) AttributeName() string {
+	return a.Name
 }
 
-func (a StringAttr) AttributeName() string { return a.Name }
-func (a StringAttr) CastType() string      { return String }
-
-type FloatAttr struct {
-	Name string
+func (a attr) AttributeType() Type {
+	return a.Type
 }
-
-func (a FloatAttr) AttributeName() string { return a.Name }
-func (a FloatAttr) CastType() string      { return Float }
-
-type BooleanAttr struct {
-	Name string
-}
-
-func (a BooleanAttr) AttributeName() string { return a.Name }
-func (a BooleanAttr) CastType() string      { return Boolean }
 
 // ErrUnknownAttribute is returned on attempt to assign unknown attribute to the
 // ActiveRecord.
@@ -169,7 +147,7 @@ func newAttributes(recordName string, attrs attributesMap, values activesupport.
 		return nil, err
 	}
 	if recordAttrs.primaryKey == nil {
-		pk := PrimaryKey{Attribute: IntAttr{Name: defaultPrimaryKeyName}}
+		pk := PrimaryKey{Attribute: attr{Name: defaultPrimaryKeyName, Type: new(Int64)}}
 		recordAttrs.primaryKey = pk
 
 		if recordAttrs.keys == nil {

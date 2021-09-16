@@ -7,7 +7,6 @@ import (
 
 	"github.com/activegraph/activegraph/actioncontroller"
 	"github.com/activegraph/activegraph/activerecord"
-	"github.com/davecgh/go-spew/spew"
 	"github.com/graphql-go/graphql/language/ast"
 
 	"github.com/graphql-go/graphql"
@@ -33,11 +32,11 @@ const (
 	OperationUnknown      = ""
 )
 
-func typeconv(t string) graphql.Type {
-	switch t {
-	case activerecord.Int:
+func typeconv(t activerecord.Type) graphql.Type {
+	switch t.(type) {
+	case *activerecord.Int64:
 		return graphql.Int
-	case activerecord.String:
+	case *activerecord.String:
 		return graphql.String
 	default:
 		return nil
@@ -48,7 +47,7 @@ func argsconv(attrs []activerecord.Attribute) graphql.FieldConfigArgument {
 	args := make(graphql.FieldConfigArgument, len(attrs))
 	for _, attr := range attrs {
 		args[attr.AttributeName()] = &graphql.ArgumentConfig{
-			Type: typeconv(attr.CastType()),
+			Type: typeconv(attr.AttributeType()),
 		}
 	}
 	return args
@@ -58,7 +57,7 @@ func payloadconv(name string, attrs []activerecord.Attribute) *graphql.Object {
 	fields := make(graphql.Fields, len(attrs))
 	for _, attr := range attrs {
 		fields[attr.AttributeName()] = &graphql.Field{
-			Name: attr.AttributeName(), Type: typeconv(attr.CastType()),
+			Name: attr.AttributeName(), Type: typeconv(attr.AttributeType()),
 		}
 	}
 	return graphql.NewObject(graphql.ObjectConfig{Name: name, Fields: fields})
@@ -70,7 +69,7 @@ func objconv(name string, model *activerecord.Relation, viewed map[string]struct
 
 	for _, attr := range attrs {
 		fields[attr.AttributeName()] = &graphql.Field{
-			Name: attr.AttributeName(), Type: typeconv(attr.CastType()),
+			Name: attr.AttributeName(), Type: typeconv(attr.AttributeType()),
 		}
 	}
 
@@ -131,7 +130,6 @@ func newResolveFunc(action actioncontroller.Action) graphql.FieldResolveFn {
 			context.Selection = queryconv(selections)
 		}
 
-		spew.Dump(context)
 		result := action.Process(context)
 		return result.Execute(context)
 	}
@@ -171,7 +169,7 @@ func (m *Mapper) primaryKey(model actioncontroller.AbstractModel) graphql.FieldC
 	return graphql.FieldConfigArgument{
 		model.PrimaryKey(): &graphql.ArgumentConfig{
 			Type: graphql.NewNonNull(
-				typeconv(model.AttributeForInspect(model.PrimaryKey()).CastType()),
+				typeconv(model.AttributeForInspect(model.PrimaryKey()).AttributeType()),
 			),
 		},
 	}
@@ -198,7 +196,7 @@ func (m *Mapper) newIndexAction(
 	args := make(graphql.FieldConfigArgument, len(action.ActionRequest()))
 	for _, attr := range action.ActionRequest() {
 		args[attr.AttributeName()] = &graphql.ArgumentConfig{
-			Type: typeconv(attr.CastType()),
+			Type: typeconv(attr.AttributeType()),
 		}
 	}
 
@@ -228,7 +226,7 @@ func (m *Mapper) newUpdateAction(
 	objFields := make(graphql.InputObjectConfigFieldMap, len(action.ActionRequest()))
 	for _, attr := range action.ActionRequest() {
 		objFields[attr.AttributeName()] = &graphql.InputObjectFieldConfig{
-			Type: typeconv(attr.CastType()),
+			Type: typeconv(attr.AttributeType()),
 		}
 	}
 
