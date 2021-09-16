@@ -141,7 +141,7 @@ func (c *Conn) ExecQuery(
 		var (
 			// Iterate over rows and scan one-by one.
 			row = make(activesupport.Hash)
-			// Initalize a list of interface pointer, so the Scan operation could
+			// Initalize a list of interfaces, so the Scan operation could
 			// assign the results to the each element of the list.
 			vals = make([]interface{}, len(op.Columns))
 		)

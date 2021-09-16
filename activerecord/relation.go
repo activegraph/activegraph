@@ -39,9 +39,9 @@ func (r *R) PrimaryKey(name string) {
 	r.primaryKey = name
 }
 
-func (r *R) defineAttribute(attr Attribute, validator AttributeValidator) {
-	r.attrs[attr.AttributeName()] = attr
-	r.validators.include(attr.AttributeName(), validator)
+func (r *R) defineAttribute(name string, t Type, validator AttributeValidator) {
+	r.attrs[name] = attr{Name: name, Type: null{t}}
+	r.validators.include(name, validator)
 }
 
 func (r *R) Validates(name string, validator AttributeValidator) {
@@ -74,8 +74,9 @@ func (r *R) BelongsTo(name string, init ...func(*BelongsTo)) {
 		panic(activesupport.ErrMultipleVariadicArguments{Name: "init"})
 	}
 
-	r.attrs[assoc.AssociationForeignKey()] = IntAttr{
+	r.attrs[assoc.AssociationForeignKey()] = attr{
 		Name: assoc.AssociationForeignKey(),
+		Type: null{new(Int64)},
 	}
 	r.assocs[name] = &assoc
 }
@@ -102,13 +103,13 @@ func (r *R) init(ctx context.Context, tableName string) error {
 	for _, column := range definitions {
 		switch column.Type {
 		case "integer":
-			r.defineAttribute(IntAttr{Name: column.Name}, new(IntValidator))
+			r.defineAttribute(column.Name, new(Int64), new(Int64Validator))
 		case "varchar":
-			r.defineAttribute(StringAttr{Name: column.Name}, new(StringValidator))
+			r.defineAttribute(column.Name, new(String), new(StringValidator))
 		case "float":
-			r.defineAttribute(FloatAttr{Name: column.Name}, new(FloatValidator))
+			r.defineAttribute(column.Name, new(Float64), new(Float64Validator))
 		case "boolean":
-			r.defineAttribute(BooleanAttr{Name: column.Name}, new(BooleanValidator))
+			r.defineAttribute(column.Name, new(Boolean), new(BooleanValidator))
 		}
 
 		if column.IsPrimaryKey {
@@ -320,9 +321,16 @@ func (rel *Relation) ExtractRecord(h activesupport.Hash) (*ActiveRecord, error) 
 		columnNames = rel.scope.ColumnNames()
 	)
 
-	params := make(map[string]interface{}, len(attrNames))
+	params := make(activesupport.Hash, len(attrNames))
 	for i, colName := range columnNames {
-		params[attrNames[i]] = h[colName]
+		attrName := attrNames[i]
+		attr := rel.scope.AttributeForInspect(attrName)
+
+		attrValue, err := attr.AttributeType().Deserialize(h[colName])
+		if err != nil {
+			return nil, err
+		}
+		params[attrName] = attrValue
 	}
 
 	return rel.Initialize(params)
