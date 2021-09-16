@@ -64,9 +64,9 @@ func (m validatorsMap) copy() validatorsMap {
 	return mm
 }
 
-func (m validatorsMap) include(attrName string, validator AttributeValidator) {
-	validators := m[attrName]
-	m[attrName] = append(validators, validator)
+func (m validatorsMap) include(attrName string, validators ...AttributeValidator) {
+	attrValidators := m[attrName]
+	m[attrName] = append(attrValidators, validators...)
 }
 
 func (m validatorsMap) extend(attrNames []string, validator AttributeValidator) {
@@ -152,58 +152,16 @@ func (v *validations) Errors() Errors {
 	return v.errors
 }
 
-type Int64Validator struct {
-	Int64
+type typeValidator struct {
+	Type
 }
 
-func (v Int64Validator) AllowsNil() bool   { return true }
-func (v Int64Validator) AllowsBlank() bool { return true }
+func (v typeValidator) AllowsNil() bool   { return true }
+func (v typeValidator) AllowsBlank() bool { return true }
 
-func (v Int64Validator) ValidateAttribute(rec *ActiveRecord, attrName string, val interface{}) error {
+func (v typeValidator) ValidateAttribute(rec *ActiveRecord, attrName string, val interface{}) error {
 	if _, err := v.Deserialize(val); err != nil {
-		return ErrInvalidType{AttrName: attrName, TypeName: "Int64", Value: val}
-	}
-	return nil
-}
-
-type StringValidator struct {
-	String
-}
-
-func (v StringValidator) AllowsNil() bool   { return true }
-func (v StringValidator) AllowsBlank() bool { return true }
-
-func (v StringValidator) ValidateAttribute(rec *ActiveRecord, attrName string, val interface{}) error {
-	if _, err := v.Deserialize(val); err != nil {
-		return ErrInvalidType{AttrName: attrName, TypeName: "String", Value: val}
-	}
-	return nil
-}
-
-type Float64Validator struct {
-	Float64
-}
-
-func (v Float64Validator) AllowsNil() bool   { return true }
-func (v Float64Validator) AllowsBlank() bool { return true }
-
-func (v Float64Validator) ValidateAttribute(r *ActiveRecord, attrName string, val interface{}) error {
-	if _, err := v.Deserialize(val); err != nil {
-		return ErrInvalidType{AttrName: attrName, TypeName: "Float64", Value: val}
-	}
-	return nil
-}
-
-type BooleanValidator struct {
-	Boolean
-}
-
-func (v BooleanValidator) AllowsNil() bool   { return true }
-func (v BooleanValidator) AllowsBlank() bool { return true }
-
-func (v BooleanValidator) ValidateAttribute(r *ActiveRecord, attrName string, val interface{}) error {
-	if _, err := v.Deserialize(val); err != nil {
-		return ErrInvalidType{AttrName: attrName, TypeName: "Boolean", Value: val}
+		return ErrInvalidType{AttrName: attrName, TypeName: v.String(), Value: val}
 	}
 	return nil
 }

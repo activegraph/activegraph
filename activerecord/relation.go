@@ -39,9 +39,11 @@ func (r *R) PrimaryKey(name string) {
 	r.primaryKey = name
 }
 
-func (r *R) defineAttribute(name string, t Type, validator AttributeValidator) {
-	r.attrs[name] = attr{Name: name, Type: null{t}}
-	r.validators.include(name, validator)
+func (r *R) DefineAttribute(name string, t Type, validators ...AttributeValidator) {
+	t = null{t}
+	r.attrs[name] = attr{Name: name, Type: t}
+	r.validators.include(name, typeValidator{t})
+	r.validators.include(name, validators...)
 }
 
 func (r *R) Validates(name string, validator AttributeValidator) {
@@ -103,13 +105,13 @@ func (r *R) init(ctx context.Context, tableName string) error {
 	for _, column := range definitions {
 		switch column.Type {
 		case "integer":
-			r.defineAttribute(column.Name, new(Int64), new(Int64Validator))
+			r.DefineAttribute(column.Name, new(Int64))
 		case "varchar":
-			r.defineAttribute(column.Name, new(String), new(StringValidator))
+			r.DefineAttribute(column.Name, new(String))
 		case "float":
-			r.defineAttribute(column.Name, new(Float64), new(Float64Validator))
+			r.DefineAttribute(column.Name, new(Float64))
 		case "boolean":
-			r.defineAttribute(column.Name, new(Boolean), new(BooleanValidator))
+			r.DefineAttribute(column.Name, new(Boolean))
 		}
 
 		if column.IsPrimaryKey {

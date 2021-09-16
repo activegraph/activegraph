@@ -5,6 +5,8 @@ import (
 )
 
 type Type interface {
+	fmt.Stringer
+
 	Deserialize(value interface{}) (interface{}, error)
 	Serialize(value interface{}) (interface{}, error)
 }
@@ -31,7 +33,9 @@ func (n null) Deserialize(value interface{}) (interface{}, error) {
 
 type Int64 struct{}
 
-func (*Int64) Deserialize(value interface{}) (interface{}, error) {
+func (*Int64) String() string { return "Int64" }
+
+func (i64 *Int64) Deserialize(value interface{}) (interface{}, error) {
 	var intval int64
 	switch value := value.(type) {
 	case int:
@@ -41,7 +45,7 @@ func (*Int64) Deserialize(value interface{}) (interface{}, error) {
 	case int64:
 		intval = value
 	default:
-		return nil, ErrType{TypeName: "Integer", Value: value}
+		return nil, ErrType{TypeName: i64.String(), Value: value}
 	}
 	return intval, nil
 }
@@ -52,12 +56,14 @@ func (*Int64) Serialize(value interface{}) (interface{}, error) {
 
 type String struct{}
 
-func (*String) Deserialize(value interface{}) (interface{}, error) {
-	s, ok := value.(string)
+func (*String) String() string { return "String" }
+
+func (s *String) Deserialize(value interface{}) (interface{}, error) {
+	strval, ok := value.(string)
 	if !ok {
-		return nil, ErrType{TypeName: "String", Value: value}
+		return nil, ErrType{TypeName: s.String(), Value: value}
 	}
-	return s, nil
+	return strval, nil
 }
 
 func (*String) Serialize(value interface{}) (interface{}, error) {
@@ -66,10 +72,11 @@ func (*String) Serialize(value interface{}) (interface{}, error) {
 
 type Float64 struct{}
 
-func (*Float64) Deserialize(value interface{}) (interface{}, error) {
+func (*Float64) String() string { return "Float64" }
+func (f64 *Float64) Deserialize(value interface{}) (interface{}, error) {
 	f, ok := value.(float64)
 	if !ok {
-		return nil, ErrType{TypeName: "Float64", Value: value}
+		return nil, ErrType{TypeName: f64.String(), Value: value}
 	}
 	return f, nil
 }
@@ -80,12 +87,14 @@ func (*Float64) Serialize(value interface{}) (interface{}, error) {
 
 type Boolean struct{}
 
-func (*Boolean) Deserialize(value interface{}) (interface{}, error) {
-	b, ok := value.(bool)
+func (b *Boolean) String() string { return "Boolean" }
+
+func (b *Boolean) Deserialize(value interface{}) (interface{}, error) {
+	boolval, ok := value.(bool)
 	if !ok {
-		return nil, ErrType{TypeName: "Boolean", Value: value}
+		return nil, ErrType{TypeName: b.String(), Value: value}
 	}
-	return b, nil
+	return boolval, nil
 }
 
 func (*Boolean) Serialize(value interface{}) (interface{}, error) {
