@@ -24,7 +24,7 @@ type Persistence interface {
 
 type InsertOperation struct {
 	TableName      string
-	Values         map[string]interface{}
+	ColumnValues   []ColumnValue
 	OnDuplicate    string
 	ConflictTarget string
 }
@@ -45,6 +45,12 @@ type QueryOperation struct {
 	Text    string
 	Args    []interface{}
 	Columns []string
+}
+
+type ColumnValue struct {
+	Name  string
+	Type  Type
+	Value interface{}
 }
 
 type ColumnDefinition struct {

@@ -33,14 +33,21 @@ const (
 )
 
 func typeconv(t activerecord.Type) graphql.Type {
-	switch t.(type) {
+	switch t := t.(type) {
 	case *activerecord.Int64:
-		return graphql.Int
+		return graphql.NewNonNull(graphql.Int)
 	case *activerecord.String:
-		return graphql.String
-	default:
-		return nil
+		return graphql.NewNonNull(graphql.String)
+	case *activerecord.Boolean:
+		return graphql.NewNonNull(graphql.Boolean)
+	case *activerecord.Float64:
+		return graphql.NewNonNull(graphql.Float)
+	case activerecord.Nil:
+		if gt := typeconv(t.Type); gt != nil {
+			return graphql.GetNullable(gt).(graphql.Type)
+		}
 	}
+	return nil
 }
 
 func argsconv(attrs []activerecord.Attribute) graphql.FieldConfigArgument {
@@ -168,9 +175,7 @@ func (m *Mapper) Match(
 func (m *Mapper) primaryKey(model actioncontroller.AbstractModel) graphql.FieldConfigArgument {
 	return graphql.FieldConfigArgument{
 		model.PrimaryKey(): &graphql.ArgumentConfig{
-			Type: graphql.NewNonNull(
-				typeconv(model.AttributeForInspect(model.PrimaryKey()).AttributeType()),
-			),
+			Type: typeconv(model.AttributeForInspect(model.PrimaryKey()).AttributeType()),
 		},
 	}
 }

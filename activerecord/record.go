@@ -213,9 +213,18 @@ func (r *ActiveRecord) Insert() (*ActiveRecord, error) {
 		return nil, err
 	}
 
+	columnValues := make([]ColumnValue, 0, len(r.attributes.values))
+	for name, value := range r.attributes.values {
+		columnValue := ColumnValue{
+			Name:  name,
+			Type:  r.attributes.keys[name].AttributeType(),
+			Value: value,
+		}
+		columnValues = append(columnValues, columnValue)
+	}
 	op := InsertOperation{
-		TableName: r.tableName,
-		Values:    r.attributes.values,
+		TableName:    r.tableName,
+		ColumnValues: columnValues,
 	}
 
 	id, err := r.conn.ExecInsert(r.Context(), &op)

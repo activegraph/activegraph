@@ -20,11 +20,15 @@ func (e ErrType) Error() string {
 	return fmt.Sprintf("invalid value '%v' for %s type", e.Value, e.TypeName)
 }
 
-type null struct {
+type Nil struct {
 	Type
 }
 
-func (n null) Deserialize(value interface{}) (interface{}, error) {
+func (n Nil) String() string {
+	return n.Type.String() + "?"
+}
+
+func (n Nil) Deserialize(value interface{}) (interface{}, error) {
 	if value == nil {
 		return nil, nil
 	}
