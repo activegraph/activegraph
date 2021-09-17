@@ -40,7 +40,6 @@ func (r *R) PrimaryKey(name string) {
 }
 
 func (r *R) DefineAttribute(name string, t Type, validators ...AttributeValidator) {
-	t = null{t}
 	r.attrs[name] = attr{Name: name, Type: t}
 	r.validators.include(name, typeValidator{t})
 	r.validators.include(name, validators...)
@@ -78,7 +77,7 @@ func (r *R) BelongsTo(name string, init ...func(*BelongsTo)) {
 
 	r.attrs[assoc.AssociationForeignKey()] = attr{
 		Name: assoc.AssociationForeignKey(),
-		Type: null{new(Int64)},
+		Type: Nil{new(Int64)},
 	}
 	r.assocs[name] = &assoc
 }
@@ -103,16 +102,24 @@ func (r *R) init(ctx context.Context, tableName string) error {
 	}
 
 	for _, column := range definitions {
+		var columnType Type
 		switch column.Type {
 		case "integer":
-			r.DefineAttribute(column.Name, new(Int64))
+			columnType = new(Int64)
 		case "varchar":
-			r.DefineAttribute(column.Name, new(String))
+			columnType = new(String)
 		case "float":
-			r.DefineAttribute(column.Name, new(Float64))
+			columnType = new(Float64)
 		case "boolean":
-			r.DefineAttribute(column.Name, new(Boolean))
+			columnType = new(Boolean)
+		default:
+			panic("unsupported type")
 		}
+
+		if !column.NotNull {
+			columnType = Nil{columnType}
+		}
+		r.DefineAttribute(column.Name, columnType)
 
 		if column.IsPrimaryKey {
 			r.PrimaryKey(column.Name)

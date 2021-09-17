@@ -83,32 +83,43 @@ func (c *Conn) ExecDelete(ctx context.Context, op *activerecord.DeleteOperation)
 	return err
 }
 
-func (c *Conn) buildInsertStmt(op *activerecord.InsertOperation) string {
+func (c *Conn) buildInsertStmt(op *activerecord.InsertOperation) (string, error) {
 	var (
 		colBuf strings.Builder
 		valBuf strings.Builder
 	)
 
-	colPos, colNum := 0, len(op.Values)
-	for col, val := range op.Values {
+	colPos, colNum := 0, len(op.ColumnValues)
+	for _, col := range op.ColumnValues {
+		val, err := col.Type.Serialize(col.Value)
+		if err != nil {
+			return "", err
+		}
+
 		colfmt, valfmt := `"%s", `, `'%v', `
 		if colPos == colNum-1 {
 			colfmt, valfmt = `"%s"`, `'%v'`
 		}
-		fmt.Fprintf(&colBuf, colfmt, col)
+
+		fmt.Fprintf(&colBuf, colfmt, col.Name)
 		fmt.Fprintf(&valBuf, valfmt, val)
 		colPos++
 	}
 
 	const stmt = `INSERT INTO "%s" (%s) VALUES (%s)`
-	return fmt.Sprintf(stmt, op.TableName, colBuf.String(), valBuf.String())
+	return fmt.Sprintf(stmt, op.TableName, colBuf.String(), valBuf.String()), nil
 }
 
 func (c *Conn) ExecInsert(ctx context.Context, op *activerecord.InsertOperation) (
 	id interface{}, err error,
 ) {
-	fmt.Println(c.buildInsertStmt(op))
-	result, err := c.querier.ExecContext(ctx, c.buildInsertStmt(op))
+	stmt, err := c.buildInsertStmt(op)
+	if err != nil {
+		return 0, err
+	}
+	fmt.Println(stmt)
+
+	result, err := c.querier.ExecContext(ctx, stmt)
 	if err != nil {
 		return 0, err
 	}
