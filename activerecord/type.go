@@ -2,6 +2,7 @@ package activerecord
 
 import (
 	"fmt"
+	"time"
 )
 
 type Type interface {
@@ -37,7 +38,7 @@ func (n Nil) Deserialize(value interface{}) (interface{}, error) {
 
 type Int64 struct{}
 
-func (*Int64) String() string { return "Int64" }
+func (*Int64) String() string { return "int64" }
 
 func (i64 *Int64) Deserialize(value interface{}) (interface{}, error) {
 	var intval int64
@@ -60,7 +61,7 @@ func (*Int64) Serialize(value interface{}) (interface{}, error) {
 
 type String struct{}
 
-func (*String) String() string { return "String" }
+func (*String) String() string { return "string" }
 
 func (s *String) Deserialize(value interface{}) (interface{}, error) {
 	strval, ok := value.(string)
@@ -76,7 +77,7 @@ func (*String) Serialize(value interface{}) (interface{}, error) {
 
 type Float64 struct{}
 
-func (*Float64) String() string { return "Float64" }
+func (*Float64) String() string { return "float64" }
 func (f64 *Float64) Deserialize(value interface{}) (interface{}, error) {
 	f, ok := value.(float64)
 	if !ok {
@@ -91,7 +92,7 @@ func (*Float64) Serialize(value interface{}) (interface{}, error) {
 
 type Boolean struct{}
 
-func (b *Boolean) String() string { return "Boolean" }
+func (b *Boolean) String() string { return "boolean" }
 
 func (b *Boolean) Deserialize(value interface{}) (interface{}, error) {
 	boolval, ok := value.(bool)
@@ -102,5 +103,79 @@ func (b *Boolean) Deserialize(value interface{}) (interface{}, error) {
 }
 
 func (*Boolean) Serialize(value interface{}) (interface{}, error) {
+	return value, nil
+}
+
+const (
+	iso8601     = "2006-01-02 15:04:05.000000 MST"
+	iso8601Date = "2006-01-02"
+)
+
+func parseTime(layout string, value interface{}) (interface{}, error) {
+	var (
+		parsedTime time.Time
+		err        error
+	)
+	switch value := value.(type) {
+	case string:
+		parsedTime, err = time.Parse(layout, value)
+	case time.Time:
+		parsedTime, err = value.UTC(), nil
+	default:
+		err = ErrType{Value: value}
+	}
+	if err != nil {
+		return nil, err
+	}
+	return parsedTime.UTC(), nil
+}
+
+func formatTime(layout string, value interface{}) (interface{}, error) {
+	switch value := value.(type) {
+	case time.Time:
+		return value.Format(layout), nil
+	default:
+		return nil, ErrType{Value: value}
+	}
+}
+
+type DateTime struct {
+}
+
+func (*DateTime) String() string { return "datetime" }
+
+func (dt *DateTime) Deserialize(value interface{}) (interface{}, error) {
+	value, err := parseTime(iso8601, value)
+	if err != nil {
+		return nil, ErrType{TypeName: dt.String(), Value: value}
+	}
+	return value, nil
+}
+
+func (dt *DateTime) Serialize(value interface{}) (interface{}, error) {
+	value, err := formatTime(iso8601, value)
+	if err != nil {
+		return nil, ErrType{TypeName: dt.String(), Value: value}
+	}
+	return value, nil
+}
+
+type Date struct{}
+
+func (*Date) String() string { return "date" }
+
+func (d *Date) Deserialize(value interface{}) (interface{}, error) {
+	value, err := parseTime(iso8601Date, value)
+	if err != nil {
+		return nil, ErrType{TypeName: d.String(), Value: value}
+	}
+	return value, nil
+}
+
+func (d *Date) Serialize(value interface{}) (interface{}, error) {
+	value, err := formatTime(iso8601Date, value)
+	if err != nil {
+		return nil, ErrType{TypeName: d.String(), Value: value}
+	}
 	return value, nil
 }

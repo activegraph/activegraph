@@ -90,7 +90,14 @@ type ActiveRecord struct {
 }
 
 func (r *ActiveRecord) ToHash() activesupport.Hash {
-	return r.attributes.values
+	hash := make(activesupport.Hash, len(r.attributes.keys))
+	for key := range r.attributes.keys {
+		hash[key] = nil
+		if value, ok := r.attributes.values[key]; ok {
+			hash[key] = value
+		}
+	}
+	return hash
 }
 
 func (r *ActiveRecord) Name() string {

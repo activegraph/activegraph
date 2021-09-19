@@ -2,11 +2,12 @@ package actionview
 
 import (
 	"fmt"
-	"github.com/pkg/errors"
 
 	"github.com/activegraph/activegraph/actioncontroller"
 	"github.com/activegraph/activegraph/activerecord"
 	"github.com/activegraph/activegraph/activesupport"
+
+	"github.com/pkg/errors"
 )
 
 type ResultFunc func(*actioncontroller.Context) (interface{}, error)
@@ -62,7 +63,6 @@ func queryNested(
 }
 
 func GraphResult(ctx *actioncontroller.Context, res activerecord.Result) actioncontroller.Result {
-	fmt.Println("!!!", res)
 	if res.IsErr() {
 		return ContentResult(res)
 	}

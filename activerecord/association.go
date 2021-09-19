@@ -2,6 +2,7 @@ package activerecord
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 )
 
@@ -212,4 +213,13 @@ func (a *associations) ReflectOnAllAssociations() []*AssociationReflection {
 		arefs = append(arefs, &AssociationReflection{Relation: rel, Association: assoc})
 	}
 	return arefs
+}
+
+func (a *associations) AssociationNames() []string {
+	names := make([]string, 0, len(a.keys))
+	for name := range a.keys {
+		names = append(names, name)
+	}
+	sort.StringSlice(names).Sort()
+	return names
 }

@@ -3,6 +3,7 @@ package activerecord
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/activegraph/activegraph/activesupport"
 )
@@ -106,14 +107,18 @@ func (r *R) init(ctx context.Context, tableName string) error {
 		switch column.Type {
 		case "integer":
 			columnType = new(Int64)
-		case "varchar":
+		case "varchar", "text":
 			columnType = new(String)
 		case "float":
 			columnType = new(Float64)
 		case "boolean":
 			columnType = new(Boolean)
+		case "datetime":
+			columnType = new(DateTime)
+		case "date":
+			columnType = new(Date)
 		default:
-			panic("unsupported type")
+			panic(fmt.Errorf("unsupported type %q", column.Type))
 		}
 
 		if !column.NotNull {
@@ -551,4 +556,20 @@ func (rel *Relation) ToA() (Array, error) {
 //	// SELECT * FROM "users" WHERE "name" = ?
 func (rel *Relation) ToSQL() string {
 	return rel.query.String()
+}
+
+func (rel *Relation) String() string {
+	var buf strings.Builder
+	fmt.Fprintf(&buf, "%ss(", strings.Title(rel.name))
+
+	attrs := rel.AttributesForInspect()
+	for i, attr := range attrs {
+		fmt.Fprintf(&buf, "%s: %s", attr.AttributeName(), attr.AttributeType())
+		if i < len(attrs)-1 {
+			fmt.Fprint(&buf, ", ")
+		}
+	}
+
+	fmt.Fprintf(&buf, ")")
+	return buf.String()
 }
