@@ -7,9 +7,9 @@ import (
 
 	"github.com/activegraph/activegraph/actioncontroller"
 	"github.com/activegraph/activegraph/activerecord"
-	"github.com/graphql-go/graphql/language/ast"
 
 	"github.com/graphql-go/graphql"
+	"github.com/graphql-go/graphql/language/ast"
 )
 
 type ErrConstraintNotFound struct {
@@ -42,6 +42,8 @@ func typeconv(t activerecord.Type) graphql.Type {
 		return graphql.NewNonNull(graphql.Boolean)
 	case *activerecord.Float64:
 		return graphql.NewNonNull(graphql.Float)
+	case *activerecord.DateTime:
+		return graphql.NewNonNull(DateTime)
 	case activerecord.Nil:
 		if gt := typeconv(t.Type); gt != nil {
 			return graphql.GetNullable(gt).(graphql.Type)
