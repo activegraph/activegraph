@@ -55,7 +55,7 @@ type ColumnValue struct {
 
 type ColumnDefinition struct {
 	Name         string
-	Type         string
+	Type         Type
 	NotNull      bool
 	IsPrimaryKey bool
 }
@@ -71,6 +71,7 @@ type Conn interface {
 	ExecQuery(ctx context.Context, op *QueryOperation, cb func(activesupport.Hash) bool) (err error)
 
 	ColumnDefinitions(ctx context.Context, tableName string) ([]ColumnDefinition, error)
+	LookupType(typeName string) (Type, error)
 
 	Close() error
 }
@@ -105,6 +106,10 @@ func (c *errConn) ExecDelete(context.Context, *DeleteOperation) error {
 
 func (c *errConn) ExecQuery(context.Context, *QueryOperation, func(activesupport.Hash) bool) error {
 	return c.err
+}
+
+func (c *errConn) LookupType(typeName string) (Type, error) {
+	return nil, c.err
 }
 
 func (c *errConn) ColumnDefinitions(ctx context.Context, tableName string) ([]ColumnDefinition, error) {

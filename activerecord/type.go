@@ -21,6 +21,14 @@ func (e ErrType) Error() string {
 	return fmt.Sprintf("invalid value '%v' for %s type", e.Value, e.TypeName)
 }
 
+type ErrUnsupportedType struct {
+	TypeName string
+}
+
+func (e ErrUnsupportedType) Error() string {
+	return fmt.Sprintf("unsupported type '%s'", e.TypeName)
+}
+
 type Nil struct {
 	Type
 }
@@ -109,6 +117,7 @@ func (*Boolean) Serialize(value interface{}) (interface{}, error) {
 const (
 	iso8601     = "2006-01-02 15:04:05.000000 MST"
 	iso8601Date = "2006-01-02"
+	iso8601Time = "15:04.05.000000 MST"
 )
 
 func parseTime(layout string, value interface{}) (interface{}, error) {
@@ -139,8 +148,7 @@ func formatTime(layout string, value interface{}) (interface{}, error) {
 	}
 }
 
-type DateTime struct {
-}
+type DateTime struct{}
 
 func (*DateTime) String() string { return "datetime" }
 
@@ -176,6 +184,26 @@ func (d *Date) Serialize(value interface{}) (interface{}, error) {
 	value, err := formatTime(iso8601Date, value)
 	if err != nil {
 		return nil, ErrType{TypeName: d.String(), Value: value}
+	}
+	return value, nil
+}
+
+type Time struct{}
+
+func (*Time) String() string { return "time" }
+
+func (t *Time) Deserialize(value interface{}) (interface{}, error) {
+	value, err := parseTime(iso8601Time, value)
+	if err != nil {
+		return nil, ErrType{TypeName: t.String(), Value: value}
+	}
+	return value, nil
+}
+
+func (t *Time) Serialize(value interface{}) (interface{}, error) {
+	value, err := formatTime(iso8601Time, value)
+	if err != nil {
+		return nil, ErrType{TypeName: t.String(), Value: value}
 	}
 	return value, nil
 }
