@@ -1,8 +1,11 @@
 package activerecord
 
 import (
+	"encoding/json"
 	"fmt"
 	"time"
+
+	"github.com/activegraph/activegraph/activesupport"
 )
 
 type Type interface {
@@ -206,4 +209,31 @@ func (t *Time) Serialize(value interface{}) (interface{}, error) {
 		return nil, ErrType{TypeName: t.String(), Value: value}
 	}
 	return value, nil
+}
+
+type JSON struct{}
+
+func (*JSON) String() string { return "json" }
+
+func (j *JSON) Deserialize(value interface{}) (interface{}, error) {
+	var (
+		hash activesupport.Hash
+		err  error
+	)
+	switch value := value.(type) {
+	case string:
+		err = json.Unmarshal([]byte(value), &hash)
+	case []byte:
+		err = json.Unmarshal(value, &hash)
+	default:
+		return nil, ErrType{TypeName: j.String(), Value: value}
+	}
+	if err != nil {
+		return nil, err
+	}
+	return value, nil
+}
+
+func (j *JSON) Serialize(value interface{}) (interface{}, error) {
+	return json.Marshal(value)
 }
