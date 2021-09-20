@@ -176,6 +176,27 @@ func (c *Conn) ExecQuery(
 	return nil
 }
 
+func (c *Conn) LookupType(typeName string) (activerecord.Type, error) {
+	switch strings.ToLower(typeName) {
+	case "integer":
+		return new(activerecord.Int64), nil
+	case "varchar", "text":
+		return new(activerecord.String), nil
+	case "float":
+		return new(activerecord.Float64), nil
+	case "boolean":
+		return new(activerecord.Boolean), nil
+	case "datetime":
+		return new(activerecord.DateTime), nil
+	case "date":
+		return new(activerecord.Date), nil
+	case "time":
+		return new(activerecord.Time), nil
+	default:
+		return nil, activerecord.ErrUnsupportedType{TypeName: typeName}
+	}
+}
+
 func (c *Conn) ColumnDefinitions(ctx context.Context, tableName string) (
 	[]activerecord.ColumnDefinition, error,
 ) {
@@ -200,9 +221,14 @@ func (c *Conn) ColumnDefinitions(ctx context.Context, tableName string) (
 			return nil, err
 		}
 
+		columnType, err := c.LookupType(ftype)
+		if err != nil {
+			return nil, err
+		}
+
 		definitions = append(definitions, activerecord.ColumnDefinition{
 			Name:         fname,
-			Type:         strings.ToLower(ftype),
+			Type:         columnType,
 			NotNull:      notnull == 1,
 			IsPrimaryKey: pk == 1,
 		})

@@ -103,24 +103,7 @@ func (r *R) init(ctx context.Context, tableName string) error {
 	}
 
 	for _, column := range definitions {
-		var columnType Type
-		switch column.Type {
-		case "integer":
-			columnType = new(Int64)
-		case "varchar", "text":
-			columnType = new(String)
-		case "float":
-			columnType = new(Float64)
-		case "boolean":
-			columnType = new(Boolean)
-		case "datetime":
-			columnType = new(DateTime)
-		case "date":
-			columnType = new(Date)
-		default:
-			panic(fmt.Errorf("unsupported type %q", column.Type))
-		}
-
+		columnType := column.Type
 		if !column.NotNull {
 			columnType = Nil{columnType}
 		}
