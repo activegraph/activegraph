@@ -4,7 +4,7 @@ import (
 	"net/http"
 
 	"github.com/activegraph/activegraph/actioncontroller"
-	"github.com/activegraph/activegraph/actioncontroller/graphql"
+	"github.com/activegraph/activegraph/actioncontroller/graphql2"
 )
 
 type A struct {
