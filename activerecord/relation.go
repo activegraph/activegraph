@@ -85,10 +85,14 @@ func (r *R) BelongsTo(name string, init ...func(*BelongsTo)) {
 
 func (r *R) HasMany(name string) {
 	r.assocs[name] = &HasMany{name: name}
+
+	// TODO: where is an attribute?
 }
 
 func (r *R) HasOne(name string) {
 	r.assocs[name] = &HasOne{name: name}
+
+	// TODO: where is an attribute?
 }
 
 func (r *R) init(ctx context.Context, tableName string) error {

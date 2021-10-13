@@ -34,15 +34,15 @@ func (t *TypeReflect) Kind() string {
 
 func (t *TypeReflect) Introspect() activesupport.Hash {
 	result := activesupport.Hash{
-		"kind": t.Kind(), "name": t.value.Name(),
+		"kind": t.Kind(), "name": t.value.Name(), "ofType": nil,
 	}
 
 	nextResult := result
 	elem := t.value.Elem
 	for i := 0; i < t.depth && elem != nil; i++ {
+		t := MakeType(t.schema, elem)
 		ofType := activesupport.Hash{
-			"kind": MakeType(t.schema, elem).Kind(),
-			"name": elem.Name(),
+			"kind": t.Kind(), "name": t.value.Name(), "ofType": nil,
 		}
 
 		nextResult["ofType"] = ofType
