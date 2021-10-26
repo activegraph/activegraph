@@ -6,7 +6,6 @@ import (
 	"strings"
 
 	graphql "github.com/vektah/gqlparser/v2/ast"
-	graphqlerror "github.com/vektah/gqlparser/v2/gqlerror"
 
 	"github.com/activegraph/activegraph/actioncontroller"
 	"github.com/activegraph/activegraph/activerecord"
@@ -266,14 +265,9 @@ func (m *Mapper) Map() (http.Handler, error) {
 		for _, op := range r.query.Operations {
 			for _, selection := range op.SelectionSet {
 				field := selection.(*graphql.Field)
-
 				data, err := routing.Dispatch(r, field)
-				if err != nil {
-					response := graphqlerror.List{graphqlerror.Errorf(err.Error())}
-					panic(response)
-					return
-				}
 
+				rw.WriteError(err)
 				rw.WriteData(field.Name, data)
 			}
 		}

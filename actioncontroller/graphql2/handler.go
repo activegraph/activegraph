@@ -27,23 +27,36 @@ type ResponseWriter interface {
 }
 
 type responseWriter struct {
-	data activesupport.Hash
+	data   activesupport.Hash
+	errors []activesupport.Hash
 }
 
 func newResponseWriter() *responseWriter {
-	return &responseWriter{make(activesupport.Hash)}
+	return &responseWriter{data: make(activesupport.Hash)}
 }
 
 func (rw *responseWriter) WriteData(k string, v interface{}) {
-	rw.data[k] = v
+	if v != nil {
+		rw.data[k] = v
+	}
 }
 
 func (rw *responseWriter) WriteError(err error) {
+	if err != nil {
+		rw.errors = append(rw.errors, activesupport.Hash{
+			"message": err.Error(),
+		})
+	}
 }
 
 func (rw *responseWriter) MarshalJSON() ([]byte, error) {
-	resp := activesupport.Hash{
-		"data": rw.data,
+	resp := activesupport.Hash{"data": nil}
+
+	if len(rw.data) != 0 {
+		resp["data"] = rw.data
+	}
+	if len(rw.errors) != 0 {
+		resp["errors"] = rw.errors
 	}
 	return json.Marshal(resp)
 }
