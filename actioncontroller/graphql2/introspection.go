@@ -53,6 +53,22 @@ func (t *TypeReflect) Introspect() activesupport.Hash {
 	return result
 }
 
+func introspectArgs(args graphql.ArgumentDefinitionList, schema *graphql.Schema) []activesupport.Hash {
+	argsIntrospection := make([]activesupport.Hash, 0, len(args))
+
+	for _, def := range args {
+		argsIntrospection = append(argsIntrospection, activesupport.Hash{
+			"name":        def.Name,
+			"description": def.Description,
+			"type":        MakeType(schema, def.Type).Introspect(),
+			// TODO: add support of default value.
+			"defaultValue": nil,
+		})
+	}
+
+	return argsIntrospection
+}
+
 func introspectFields(fields graphql.FieldList, schema *graphql.Schema) []activesupport.Hash {
 	fieldsIntrospection := make([]activesupport.Hash, 0, len(fields))
 
@@ -60,7 +76,7 @@ func introspectFields(fields graphql.FieldList, schema *graphql.Schema) []active
 		fieldsIntrospection = append(fieldsIntrospection, activesupport.Hash{
 			"name":             def.Name,
 			"description":      def.Description,
-			"args":             make([]activesupport.Hash, 0),
+			"args":             introspectArgs(def.Arguments, schema),
 			"type":             MakeType(schema, def.Type).Introspect(),
 			"isDeprecated":     false,
 			"deprecatedReason": nil,
@@ -86,8 +102,9 @@ func introspect(schema *graphql.Schema) activesupport.Hash {
 	}
 
 	schemaIntrospection := activesupport.Hash{
-		"queryType": activesupport.Hash{"name": "Query"},
-		"types":     typesIntrospection,
+		"queryType":    activesupport.Hash{"name": "Query"},
+		"mutationType": activesupport.Hash{"name": "Mutation"},
+		"types":        typesIntrospection,
 	}
 
 	return activesupport.Hash{

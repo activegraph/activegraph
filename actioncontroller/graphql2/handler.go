@@ -45,15 +45,6 @@ func (fn HandlerFunc) Serve(rw ResponseWriter, r *Request) {
 	fn(rw, r)
 }
 
-// DefaultHandler is a default handler used by GraphQLhandler.
-func DefaultHandler(rw ResponseWriter, r *Request) {
-	if r.query.Operations.ForName("IntrospectionQuery") != nil {
-		IntrospectionHandler(rw, r)
-		return
-	}
-	rw.Write([]byte(`{"data": null}`))
-}
-
 // NewHandler returns a new HTTP handler that attempts to parse GraphQL
 // request from URL, body, or form and executes request using the specifies
 // schema.
