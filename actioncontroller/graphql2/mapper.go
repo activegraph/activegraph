@@ -1,7 +1,6 @@
 package graphql
 
 import (
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"strings"
@@ -265,18 +264,17 @@ func (m *Mapper) Map() (http.Handler, error) {
 		}
 
 		for _, op := range r.query.Operations {
-			for _, field := range op.SelectionSet {
-				result, err := routing.Dispatch(r, field.(*graphql.Field))
+			for _, selection := range op.SelectionSet {
+				field := selection.(*graphql.Field)
+
+				data, err := routing.Dispatch(r, field)
 				if err != nil {
 					response := graphqlerror.List{graphqlerror.Errorf(err.Error())}
-					b, _ := json.Marshal(response)
-					rw.Write(b)
+					panic(response)
 					return
 				}
 
-				b, _ := json.Marshal(result)
-				rw.Write([]byte(`{"data":` + string(b) + `}`))
-				return
+				rw.WriteData(field.Name, data)
 			}
 		}
 	}

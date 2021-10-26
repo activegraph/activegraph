@@ -1,8 +1,6 @@
 package graphql
 
 import (
-	"encoding/json"
-
 	graphql "github.com/vektah/gqlparser/v2/ast"
 
 	"github.com/activegraph/activegraph/activesupport"
@@ -107,11 +105,7 @@ func introspect(schema *graphql.Schema) activesupport.Hash {
 		"types":        typesIntrospection,
 	}
 
-	return activesupport.Hash{
-		"data": activesupport.Hash{
-			"__schema": schemaIntrospection,
-		},
-	}
+	return schemaIntrospection
 }
 
 func IntrospectionHandler(rw ResponseWriter, r *Request) {
@@ -119,13 +113,5 @@ func IntrospectionHandler(rw ResponseWriter, r *Request) {
 	if query == nil {
 		return
 	}
-
-	// schema := introspection.WrapSchema(r.schema)
-	hash := introspect(r.schema)
-
-	b, err := json.Marshal(hash)
-	if err != nil {
-		panic(err)
-	}
-	rw.Write(b)
+	rw.WriteData("__schema", introspect(r.schema))
 }

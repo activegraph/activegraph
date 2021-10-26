@@ -1,8 +1,11 @@
 package graphql
 
 import (
+	"encoding/json"
 	"net/http"
 	"strings"
+
+	"github.com/activegraph/activegraph/activesupport"
 
 	graphql "github.com/vektah/gqlparser/v2/ast"
 )
@@ -19,16 +22,30 @@ func textHandler(status int, text string) http.HandlerFunc {
 
 // ResponseWriter interface is used by a GraphQL handler to construct a response.
 type ResponseWriter interface {
-	Write([]byte) error
+	WriteData(k string, v interface{})
+	WriteError(err error)
 }
 
 type responseWriter struct {
-	result []byte
+	data activesupport.Hash
 }
 
-func (rw *responseWriter) Write(b []byte) error {
-	rw.result = b
-	return nil
+func newResponseWriter() *responseWriter {
+	return &responseWriter{make(activesupport.Hash)}
+}
+
+func (rw *responseWriter) WriteData(k string, v interface{}) {
+	rw.data[k] = v
+}
+
+func (rw *responseWriter) WriteError(err error) {
+}
+
+func (rw *responseWriter) MarshalJSON() ([]byte, error) {
+	resp := activesupport.Hash{
+		"data": rw.data,
+	}
+	return json.Marshal(resp)
 }
 
 // Handler responds to a GraphQL request.
@@ -67,11 +84,17 @@ func NewHandler(h Handler, schema *graphql.Schema) http.HandlerFunc {
 		}
 
 		// Serve the GraphQL request and write the result through HTTP.
-		var grw responseWriter
-		h.Serve(&grw, gr)
+		grw := newResponseWriter()
+		h.Serve(grw, gr)
+
+		data, err := grw.MarshalJSON()
+		if err != nil {
+			// TODO: reply with 5xx
+			panic(err)
+		}
 
 		rw.Header().Set("Content-Type", "application/json")
 		rw.WriteHeader(http.StatusOK)
-		rw.Write(grw.result)
+		rw.Write(data)
 	}
 }
