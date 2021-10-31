@@ -113,7 +113,7 @@ func (a *HasOne) AccessAssociation(rel *Relation, r *ActiveRecord) Result {
 	}
 	switch len(records) {
 	case 0:
-		return rel.New()
+		return Ok(nil)
 	case 1:
 		return Ok(records[0])
 	default:

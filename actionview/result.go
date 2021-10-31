@@ -43,6 +43,10 @@ func queryNested(
 		return nil, err
 	}
 
+	if assoc == nil {
+		return nil, nil
+	}
+
 	assocHash := assoc.ToHash()
 	if len(selection.NestedAttributes) == 0 {
 		return assocHash, nil
@@ -68,9 +72,11 @@ func GraphResult(ctx *actioncontroller.Context, res activerecord.Result) actionc
 	}
 
 	record := res.UnwrapRecord()
-	recordHash := record.ToHash()
+	recordHash := make(activesupport.Hash)
+
 	for _, sel := range ctx.Selection {
-		if _, ok := recordHash[sel.AttributeName]; ok {
+		if record.HasAttribute(sel.AttributeName) {
+			recordHash[sel.AttributeName] = record.Attribute(sel.AttributeName)
 			continue
 		}
 
