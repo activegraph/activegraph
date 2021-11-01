@@ -24,9 +24,20 @@ func (e ErrUnknownAssociation) Error() string {
 }
 
 type Association interface {
+	// AssociationOwner() *Relation
 	AssociationName() string
 	AssociationForeignKey() string
+}
+
+type SingularAssociation interface {
+	Association
 	AccessAssociation(*Relation, *ActiveRecord) Result
+}
+
+type CollectionAssociation interface {
+	Association
+	// TODO: Rework to ArrayResult!
+	AccessCollection(*Relation, *ActiveRecord) (Array, error)
 }
 
 type AssociationReflection struct {
@@ -78,14 +89,18 @@ func (a *HasMany) AssociationName() string {
 }
 
 func (a *HasMany) AssociationForeignKey() string {
+	// TODO: this is completely wrong.
 	if a.foreignKey != "" {
 		return a.foreignKey
 	}
 	return strings.ToLower(a.name) + "_" + defaultPrimaryKeyName
 }
 
-func (a *HasMany) AccessAssociation(rel *Relation, r *ActiveRecord) Result {
-	return Err(fmt.Errorf("not implemented"))
+func (a *HasMany) AccessCollection(rel *Relation, r *ActiveRecord) (Array, error) {
+	rel = rel.WithContext(r.Context())
+	// TODO: Make "scope" accessable and understandable.
+	rel = rel.Where(r.Name()+"_"+defaultPrimaryKeyName, r.ID())
+	return rel.ToA()
 }
 
 func (a *HasMany) String() string {
@@ -194,7 +209,7 @@ func (a *associations) ReflectOnAssociation(assocName string) *AssociationReflec
 	if !a.HasAssociation(assocName) {
 		return nil
 	}
-	rel, err := a.reflection.Reflection(assocName)
+	rel, err := a.reflection.Reflection(a.keys[assocName].AssociationName())
 	if err != nil {
 		return nil
 	}
@@ -205,8 +220,8 @@ func (a *associations) ReflectOnAssociation(assocName string) *AssociationReflec
 // associations in the Relation.
 func (a *associations) ReflectOnAllAssociations() []*AssociationReflection {
 	arefs := make([]*AssociationReflection, 0, len(a.keys))
-	for assocName, assoc := range a.keys {
-		rel, _ := a.reflection.Reflection(assocName)
+	for _, assoc := range a.keys {
+		rel, _ := a.reflection.Reflection(assoc.AssociationName())
 		if rel == nil {
 			continue
 		}

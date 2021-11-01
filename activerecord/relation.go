@@ -84,7 +84,8 @@ func (r *R) BelongsTo(name string, init ...func(*BelongsTo)) {
 }
 
 func (r *R) HasMany(name string) {
-	r.assocs[name] = &HasMany{name: name}
+	// TODO: Trim trailing 's' differently.
+	r.assocs[name] = &HasMany{name: strings.TrimSuffix(name, "s")}
 
 	// TODO: where is an attribute?
 }

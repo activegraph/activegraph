@@ -146,12 +146,33 @@ func (s *Schema) AddModel(model *activerecord.Relation) *graphql.Definition {
 		for _, assoc := range assocs {
 			// Put a type dependency to the queue of registration.
 			queue = append(queue, assoc.Relation)
-			assocName := strings.Title(assoc.AssociationName())
+
+			var (
+				assocName string
+				assocType *graphql.Type
+			)
+
+			switch assoc.Association.(type) {
+			case activerecord.SingularAssociation:
+				assocName = assoc.AssociationName()
+				assocType = graphql.NamedType(CanonicalModelName(assoc.Relation.Name()), nil)
+			case activerecord.CollectionAssociation:
+				// TODO: take name from the reflection?
+				assocName = assoc.AssociationName() + "s"
+				assocType = &graphql.Type{
+					Elem: &graphql.Type{
+						NonNull: true,
+						Elem:    graphql.NamedType(CanonicalModelName(assoc.Relation.Name()), nil),
+					},
+				}
+			default:
+				panic(fmt.Errorf("association type %T is not supported", assoc))
+			}
 
 			fields = append(fields, &graphql.FieldDefinition{
-				Name: assoc.AssociationName(),
-				// TODO: what about modifications (non-nil/list) ?
-				Type: graphql.NamedType(assocName, nil),
+				Name: assocName,
+				// TODO: what about modifications (non-nil) ?
+				Type: assocType,
 			})
 		}
 

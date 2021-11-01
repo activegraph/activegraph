@@ -160,12 +160,18 @@ func (r *ActiveRecord) AccessAssociation(assocName string) (*ActiveRecord, error
 		return rec, nil
 	}
 
-	reflection := r.ReflectOnAssociation(assocName)
-	if reflection == nil {
+	target := r.ReflectOnAssociation(assocName)
+	if target == nil {
 		return nil, ErrUnknownAssociation{RecordName: r.name, Assoc: assocName}
 	}
 
-	result := reflection.AccessAssociation(reflection.Relation, r)
+	assoc, ok := target.Association.(SingularAssociation)
+	if !ok {
+		message := fmt.Sprintf("'%s' is not a singular association", assocName)
+		return nil, ErrAssociation{Message: message}
+	}
+
+	result := assoc.AccessAssociation(target.Relation, r)
 	if result.Err() != nil {
 		return nil, result.Err()
 	}
@@ -189,30 +195,27 @@ func (r *ActiveRecord) Association(assocName string) *ActiveRecord {
 	return Return(r.AccessAssociation(assocName)).UnwrapRecord()
 }
 
-func (r *ActiveRecord) AccessCollection(assocName string) (*Relation, error) {
-	foreignRef := r.ReflectOnAssociation(assocName)
-	if foreignRef == nil {
+func (r *ActiveRecord) AccessCollection(assocName string) (Array, error) {
+	target := r.ReflectOnAssociation(assocName)
+	if target == nil {
 		return nil, ErrUnknownAssociation{RecordName: r.name, Assoc: assocName}
 	}
 
-	selfRef := foreignRef.Relation.ReflectOnAssociation(r.name)
-	if selfRef == nil {
-		return nil, ErrUnknownAssociation{RecordName: foreignRef.Relation.Name(), Assoc: r.name}
+	assoc, ok := target.Association.(CollectionAssociation)
+	if !ok {
+		message := fmt.Sprintf("'%s' is not a collection association", assocName)
+		return nil, ErrAssociation{Message: message}
 	}
 
-	rel := foreignRef.Relation.WithContext(r.Context())
-	err := rel.scope.AssignAttribute(selfRef.AssociationForeignKey(), r.ID())
-	if err != nil {
-		return nil, err
-	}
-	return rel, nil
+	return assoc.AccessCollection(target.Relation, r)
 }
 
 // Collection returns a Relation of all associated records. A nil is returned
 // if relation does not belong to the record.
 func (r *ActiveRecord) Collection(assocName string) *Relation {
-	rel, _ := r.AccessCollection(assocName)
-	return rel
+	target := r.ReflectOnAssociation(assocName)
+	// rel, _ := r.AccessCollection(assocName)
+	return target.Relation
 }
 
 func (r *ActiveRecord) Insert() (*ActiveRecord, error) {
