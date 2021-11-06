@@ -39,7 +39,6 @@ func queryNested(
 	selection actioncontroller.QueryAttribute,
 ) (interface{}, error) {
 
-	// TODO: do not trim suffix here!
 	target := rec.ReflectOnAssociation(selection.AttributeName)
 	fmt.Println("!!!", rec, strings.TrimSuffix(selection.AttributeName, "s"))
 	fmt.Printf("\tnested: %s / %v || %v\n", rec, selection, target)
@@ -49,12 +48,13 @@ func queryNested(
 
 	switch target.Association.(type) {
 	case activerecord.SingularAssociation:
-		assoc, err := rec.AccessAssociation(selection.AttributeName)
-		if assoc == nil || err != nil {
-			return nil, err
+		result := rec.AccessAssociation(selection.AttributeName)
+		if result.Ok() == nil {
+			return result.Ok(), result.Err()
 		}
 
 		// TODO: Slice hash to take only necessary attributes.
+		assoc := result.UnwrapRecord()
 		assocHash := assoc.ToHash()
 		for _, sel := range selection.NestedAttributes {
 			if _, ok := assocHash[sel.AttributeName]; ok {
@@ -69,11 +69,12 @@ func queryNested(
 		}
 		return assocHash, nil
 	case activerecord.CollectionAssociation:
-		assocs, err := rec.AccessCollection(selection.AttributeName)
-		if assocs == nil || err != nil {
-			return nil, err
+		collection := rec.AccessCollection(selection.AttributeName)
+		if collection.Ok() == nil {
+			return collection.Ok(), collection.Err()
 		}
 
+		assocs := collection.ToA()
 		result := make([]activesupport.Hash, 0, len(assocs))
 		for _, assoc := range assocs {
 			// TODO: Slice hash to take only necessary attributes.

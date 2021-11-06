@@ -28,11 +28,11 @@ type AttributeMethods interface {
 }
 
 type AttributeAccessors interface {
-	Attribute(attrName string) (val interface{})
 	AttributePresent(attrName string) bool
+	Attribute(attrName string) interface{}
+	AccessAttribute(attrName string) interface{}
 	AssignAttribute(attrName string, val interface{}) error
 	AssignAttributes(newAttributes map[string]interface{}) error
-	AccessAttribute(attrName string) (val interface{})
 }
 
 // PrimaryKey makes any specified attribute a primary key.

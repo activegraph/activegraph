@@ -31,13 +31,32 @@ type Association interface {
 
 type SingularAssociation interface {
 	Association
-	AccessAssociation(*Relation, *ActiveRecord) Result
+	AccessAssociation(owner *ActiveRecord) Result
 }
 
 type CollectionAssociation interface {
 	Association
-	// TODO: Rework to ArrayResult!
-	AccessCollection(*Relation, *ActiveRecord) (Array, error)
+	AccessCollection(owner *ActiveRecord) CollectionResult
+}
+
+type AssociationMethods interface {
+	AssociationNames() []string
+	HasAssociation(assocName string) bool
+	HasAssociations(assocNames ...string) bool
+	ReflectOnAssociation(assocName string) *AssociationReflection
+	ReflectOnAllAssociations() []*AssociationReflection
+	// AssociationForInspect(assocName string) Association
+	// AssociationsForInspect(assocNames ...string) []Association
+}
+
+type AssociationAccessors interface {
+	// AssignAssociation(assocName string, assoc *ActiveRecord) error
+	AccessAssociation(assocName string) Result
+}
+
+type CollectionAccessors interface {
+	// AssignCollection(collName string, coll []*ActiveRecord) error
+	AccessCollection(collName string) CollectionResult
 }
 
 type AssociationReflection struct {
@@ -46,46 +65,77 @@ type AssociationReflection struct {
 }
 
 type BelongsTo struct {
-	name       string
+	owner      *Relation
+	reflection *Reflection
+	targetName string
 	foreignKey string
 }
 
+func (a *BelongsTo) AssociationOwner() *Relation {
+	return a.owner
+}
+
 func (a *BelongsTo) AssociationName() string {
-	return a.name
+	return a.targetName
 }
 
 // ForeignKey sets the foreign key used for the association. By default this is
 // guessed to be the name of this relation in lower-case and "_id" suffixed.
 //
 // So a relation that defines a BelongsTo("person") association will use "person_id"
-// as the default foreign key.
-func (a *BelongsTo) ForeignKey(name string) {
-	a.foreignKey = name
+// as a default foreign key.
+func (a *BelongsTo) ForeignKey(fk string) {
+	a.foreignKey = fk
 }
 
 func (a *BelongsTo) AssociationForeignKey() string {
 	if a.foreignKey != "" {
 		return a.foreignKey
 	}
-	return strings.ToLower(a.name) + "_" + defaultPrimaryKeyName
+	// target_id
+	return a.targetName + "_" + defaultPrimaryKeyName
 }
 
-func (a *BelongsTo) AccessAssociation(rel *Relation, r *ActiveRecord) Result {
-	assocId := r.AccessAttribute(a.AssociationForeignKey())
-	return rel.WithContext(r.Context()).Find(assocId)
+// AccessAssociation returns a record of the target.
+//
+//	activerecord.New("owner", func(r *activerecord.R) {
+//		r.BelongsTo("target")
+//	})
+//
+// This association considers the following tables relation:
+//
+//	+------------------------+        +----------------+
+//	|          owners        |        |     targets    |
+//	+------------+-----------+        +------+---------+
+//	| id         | integer   |    +-->| id   | integer | pk
+//	| target_id  | string    |*---+   | name | string  |
+// 	| updated_at | timestamp |        +------+---------+
+//	+------------+-----------+
+//
+func (a *BelongsTo) AccessAssociation(owner *ActiveRecord) Result {
+	// Find target association relation given it's name.
+	targets, err := a.reflection.Reflection(a.targetName)
+	if err != nil {
+		return Err(err)
+	}
+
+	targetId := owner.AccessAttribute(a.AssociationForeignKey())
+	return targets.WithContext(owner.Context()).Find(targetId)
 }
 
 func (a *BelongsTo) String() string {
-	return fmt.Sprintf("#<Association type: 'belongs_to', name: '%s'>", a.name)
+	return fmt.Sprintf("#<Association type: 'belongs_to', name: '%s'>", a.targetName)
 }
 
 type HasMany struct {
-	name       string
+	owner      *Relation
+	reflection *Reflection
+	targetName string
 	foreignKey string
 }
 
 func (a *HasMany) AssociationName() string {
-	return a.name
+	return a.targetName
 }
 
 func (a *HasMany) AssociationForeignKey() string {
@@ -93,26 +143,62 @@ func (a *HasMany) AssociationForeignKey() string {
 	if a.foreignKey != "" {
 		return a.foreignKey
 	}
-	return strings.ToLower(a.name) + "_" + defaultPrimaryKeyName
+	return strings.ToLower(a.owner.Name()) + "_" + defaultPrimaryKeyName
 }
 
-func (a *HasMany) AccessCollection(rel *Relation, r *ActiveRecord) (Array, error) {
-	rel = rel.WithContext(r.Context())
+// AccessCollection returns a collection of the target records.
+//
+// HasMany association indicates a one-to-many association with another model. The
+// association indicates that each instance of the model has zero or more instances
+// of target model.
+//
+//	activerecord.New("owner", func(r *activerecord.R) {
+//		r.HasMany("targets")
+//	})
+//
+// This association considers the following tables relation:
+//
+//	+----------------+         +--------------------+
+//	|     owners     |         |       targets      |
+//	+------+---------+         +----------+---------+
+//	| id   | integer |<---+    | id       | integer |
+//	| name | string  |    +---*| owner_id | integer |
+//	+------+---------+         | name     | string  |
+//	                           +----------+---------+
+//
+func (a *HasMany) AccessCollection(owner *ActiveRecord) CollectionResult {
+	targets, err := a.reflection.Reflection(a.targetName)
+	if err != nil {
+		return ErrCollection(err)
+	}
+
+	targets = targets.WithContext(owner.Context())
+
 	// TODO: Make "scope" accessable and understandable.
-	rel = rel.Where(r.Name()+"_"+defaultPrimaryKeyName, r.ID())
-	return rel.ToA()
+	targets = targets.Where(a.AssociationForeignKey(), owner.ID())
+	return OkCollection(targets)
 }
 
 func (a *HasMany) String() string {
-	return fmt.Sprintf("#<Association type: 'has_many', name: '%s'>", a.name)
+	return fmt.Sprintf("#<Association type: 'has_many', name: '%s'>", a.targetName)
 }
 
 type HasOne struct {
-	name string
+	owner      *Relation
+	reflection *Reflection
+	targetName string
+	foreignKey string
+}
+
+func (a *HasOne) AssociationOwner() *Relation {
+	return a.owner
 }
 
 func (a *HasOne) AssociationName() string {
-	return a.name
+	if a.foreignKey != "" {
+		return a.foreignKey
+	}
+	return a.targetName + "_" + defaultPrimaryKeyName
 }
 
 func (a *HasOne) AssociationForeignKey() string {
@@ -120,9 +206,34 @@ func (a *HasOne) AssociationForeignKey() string {
 	return defaultPrimaryKeyName
 }
 
-func (a *HasOne) AccessAssociation(rel *Relation, r *ActiveRecord) Result {
-	rel = rel.WithContext(r.Context()).Where(r.name+"_id", r.ID())
-	records, err := rel.ToA()
+// The association indicates that one model has a reference to this model.
+// That "target" model can be fetched through this association.
+//
+//	activerecord.New("owner", func(r *activerecord.R) {
+//		r.HasOne("target")
+//	})
+//
+// This association considers the following tables relation:
+//
+//	+----------------+         +--------------------+
+//	|     owners     |         |       targets      |
+//	+------+---------+         +----------+---------+
+//	| id   | integer |<---+    | id       | integer |
+//	| name | string  |    +---*| owner_id | integer |
+//	+------+---------+         | name     | string  |
+//	                           +----------+---------+
+//
+func (a *HasOne) AccessAssociation(owner *ActiveRecord) Result {
+	// Find target association relation given it's name.
+	targets, err := a.reflection.Reflection(a.targetName)
+	if err != nil {
+		return Err(err)
+	}
+
+	targets = targets.WithContext(owner.Context())
+	targets = targets.Where(a.AssociationForeignKey(), owner.ID())
+
+	records, err := targets.ToA()
 	if err != nil {
 		return Err(err)
 	}
@@ -139,7 +250,7 @@ func (a *HasOne) AccessAssociation(rel *Relation, r *ActiveRecord) Result {
 }
 
 func (a *HasOne) String() string {
-	return fmt.Sprintf("#<Assocation type: 'has_one', name: '%s'>", a.name)
+	return fmt.Sprintf("#<Assocation type: 'has_one', name: '%s'>", a.targetName)
 }
 
 type associationsMap map[string]Association
@@ -154,6 +265,7 @@ func (m associationsMap) copy() associationsMap {
 
 type associations struct {
 	recordName string
+	rec        *ActiveRecord
 	reflection *Reflection
 	keys       associationsMap
 	values     map[string]*ActiveRecord
@@ -168,6 +280,11 @@ func newAssociations(
 		keys:       assocs,
 		values:     make(map[string]*ActiveRecord),
 	}
+}
+
+func (a *associations) delegateAccessors(rec *ActiveRecord) *associations {
+	a.rec = rec
+	return a
 }
 
 func (a *associations) copy() *associations {
@@ -206,6 +323,7 @@ func (a *associations) get(assocName string) Association {
 
 // ReflectOnAssociation returns AssociationReflection for the specified association.
 func (a *associations) ReflectOnAssociation(assocName string) *AssociationReflection {
+	fmt.Println("ASSOCIATIONS", a.keys)
 	if !a.HasAssociation(assocName) {
 		return nil
 	}
@@ -237,4 +355,32 @@ func (a *associations) AssociationNames() []string {
 	}
 	sort.StringSlice(names).Sort()
 	return names
+}
+
+func (a *associations) AccessAssociation(assocName string) Result {
+	assoc := a.get(assocName)
+	if assoc == nil {
+		return Err(ErrUnknownAssociation{RecordName: a.rec.Name(), Assoc: assocName})
+	}
+
+	sa, ok := assoc.(SingularAssociation)
+	if !ok {
+		message := fmt.Sprintf("'%s' is not a singular association", assocName)
+		return Err(ErrAssociation{Message: message})
+	}
+	return sa.AccessAssociation(a.rec)
+}
+
+func (a *associations) AccessCollection(collName string) CollectionResult {
+	assoc := a.get(collName)
+	if assoc == nil {
+		return ErrCollection(ErrUnknownAssociation{RecordName: a.rec.Name(), Assoc: collName})
+	}
+
+	ca, ok := assoc.(CollectionAssociation)
+	if !ok {
+		message := fmt.Sprintf("'%s' is not a collection association", collName)
+		return ErrCollection(ErrAssociation{Message: message})
+	}
+	return ca.AccessCollection(a.rec)
 }

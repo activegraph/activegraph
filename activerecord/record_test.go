@@ -52,7 +52,7 @@ func TestActiveRecord_Insert(t *testing.T) {
 	require.NoError(t, err)
 
 	Author := activerecord.New("author", func(r *activerecord.R) {
-		r.HasMany("book")
+		r.HasMany("books")
 	})
 
 	Book := activerecord.New("book", func(r *activerecord.R) {
@@ -102,16 +102,14 @@ func TestActiveRecord_Insert(t *testing.T) {
 	require.NoError(t, err)
 	t.Log(authors)
 
-	books := author1.UnwrapRecord().Collection("book").Where("year > ?", 1846)
-	t.Logf("%#v", books)
-	bb, err := books.ToA()
-	require.NoError(t, err)
+	bb := author1.UnwrapRecord().Collection("book").ToA()
+	t.Logf("%#v", bb)
 	require.Len(t, bb, 3)
 
-	bb, _ = books.Where("year", 1851).ToA()
-	t.Log(bb)
+	// bb, _ = books.Where("year", 1851).ToA()
+	// t.Log(bb)
 
-	books = Book.All().Group("author_id", "year").Select("author_id", "year")
+	books := Book.All().Group("author_id", "year").Select("author_id", "year")
 
 	t.Log(books)
 	bb, err = books.ToA()
