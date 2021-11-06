@@ -18,6 +18,8 @@ func (e *ErrUnknownPrimaryKey) Error() string {
 }
 
 type R struct {
+	rel *Relation
+
 	tableName   string
 	primaryKey  string
 	attrs       attributesMap
@@ -58,15 +60,8 @@ func (r *R) ValidatesPresence(names ...string) {
 	r.validators.extend(names, new(Presence))
 }
 
-func (r *R) Scope(reflection *Reflection) {
-	if reflection == nil {
-		panic("nil reflection")
-	}
-	r.reflection = reflection
-}
-
 func (r *R) BelongsTo(name string, init ...func(*BelongsTo)) {
-	assoc := BelongsTo{name: name}
+	assoc := BelongsTo{targetName: name, owner: r.rel, reflection: r.reflection}
 
 	switch len(init) {
 	case 0:
@@ -84,11 +79,19 @@ func (r *R) BelongsTo(name string, init ...func(*BelongsTo)) {
 }
 
 func (r *R) HasMany(name string) {
-	r.assocs[name] = &HasMany{name: name}
+	// TODO: Define library methods to pluralize words.
+	targetName := strings.TrimSuffix(name, "s")
+
+	// Use plural name for the name of attribute, while target name
+	// of the association should be in singular (to find a target relation
+	// through the reflection.
+	r.assocs[name] = &HasMany{
+		targetName: targetName, owner: r.rel, reflection: r.reflection,
+	}
 }
 
 func (r *R) HasOne(name string) {
-	r.assocs[name] = &HasOne{name: name}
+	r.assocs[name] = &HasOne{targetName: name, owner: r.rel, reflection: r.reflection}
 }
 
 func (r *R) init(ctx context.Context, tableName string) error {
@@ -119,6 +122,8 @@ func (r *R) init(ctx context.Context, tableName string) error {
 type Relation struct {
 	name      string
 	tableName string
+	// TODO: add *Reflection property.
+	// reflection *Reflection
 
 	conn        Conn
 	connections *connectionHandler
@@ -153,7 +158,10 @@ func New(name string, init ...func(*R)) *Relation {
 }
 
 func Initialize(name string, init func(*R)) (*Relation, error) {
+	rel := &Relation{name: name}
+
 	r := R{
+		rel:         rel,
 		assocs:      make(associationsMap),
 		attrs:       make(attributesMap),
 		validators:  make(validatorsMap),
@@ -193,16 +201,13 @@ func Initialize(name string, init func(*R)) (*Relation, error) {
 	validations := newValidations(r.validators.copy())
 
 	// Create the model schema, and register it within a reflection instance.
-	rel := &Relation{
-		name:             name,
-		tableName:        r.tableName,
-		scope:            scope,
-		associations:     *assocs,
-		validations:      *validations,
-		connections:      r.connections,
-		query:            &QueryBuilder{from: r.tableName},
-		AttributeMethods: scope,
-	}
+	rel.tableName = r.tableName
+	rel.scope = scope
+	rel.associations = *assocs
+	rel.validations = *validations
+	rel.connections = r.connections
+	rel.query = &QueryBuilder{from: r.tableName}
+	rel.AttributeMethods = scope
 	r.reflection.AddReflection(name, rel)
 
 	return rel, nil
@@ -293,15 +298,15 @@ func (rel *Relation) Initialize(params map[string]interface{}) (*ActiveRecord, e
 		return nil, err
 	}
 
-	return &ActiveRecord{
-		name:               rel.name,
-		tableName:          rel.tableName,
-		conn:               rel.Connection(),
-		attributes:         *attributes,
-		associations:       *rel.associations.copy(),
-		validations:        *rel.validations.copy(),
-		associationRecords: make(map[string]*ActiveRecord),
-	}, nil
+	rec := &ActiveRecord{
+		name:         rel.name,
+		tableName:    rel.tableName,
+		conn:         rel.Connection(),
+		attributes:   *attributes,
+		associations: rel.associations.copy(),
+		validations:  *rel.validations.copy(),
+	}
+	return rec.init(), nil
 }
 
 func (rel *Relation) Create(params map[string]interface{}) (*ActiveRecord, error) {
@@ -543,7 +548,7 @@ func (rel *Relation) ToSQL() string {
 
 func (rel *Relation) String() string {
 	var buf strings.Builder
-	fmt.Fprintf(&buf, "%ss(", strings.Title(rel.name))
+	fmt.Fprintf(&buf, "%s(", strings.Title(rel.name))
 
 	attrs := rel.AttributesForInspect()
 	for i, attr := range attrs {

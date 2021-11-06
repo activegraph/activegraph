@@ -1,8 +1,20 @@
 package actioncontroller
 
 import (
+	"fmt"
+
 	"github.com/activegraph/activegraph/activerecord"
 )
+
+// ErrActionNotFound is returned when a non-existing action is triggered.
+type ErrActionNotFound struct {
+	ActionName string
+}
+
+// Error returns a string representation of the error.
+func (e ErrActionNotFound) Error() string {
+	return fmt.Sprintf("action %q not found", e.ActionName)
+}
 
 type actionsMap map[string]*NamedAction
 

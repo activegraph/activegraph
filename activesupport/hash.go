@@ -23,6 +23,18 @@ func (h Hash) Copy() Hash {
 	return hcopy
 }
 
+// Slice returns a new Hash containing the entries for the given keys.
+// Any given keys that are not found are ignored.
+func (h Hash) Slice(keys ...string) Hash {
+	hcopy := make(Hash, len(keys))
+	for i := range keys {
+		if v, ok := h[keys[i]]; ok {
+			hcopy[keys[i]] = v
+		}
+	}
+	return hcopy
+}
+
 func (h Hash) Merged(others ...Hash) Hash {
 	hcopy := h.Copy()
 	for _, other := range others {

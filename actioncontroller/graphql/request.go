@@ -3,28 +3,17 @@ package graphql
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io/ioutil"
 	"mime"
 	"net/http"
 	"net/url"
-	"strings"
 
-	"github.com/graphql-go/graphql"
-	qlast "github.com/graphql-go/graphql/language/ast"
-	qlexpr "github.com/graphql-go/graphql/language/parser"
-	qlsrc "github.com/graphql-go/graphql/language/source"
 	"github.com/pkg/errors"
+	graphql "github.com/vektah/gqlparser/v2/ast"
+	grapherror "github.com/vektah/gqlparser/v2/gqlerror"
+	graphparser "github.com/vektah/gqlparser/v2/parser"
 )
-
-// textHandler creates an HTTP handler that writes the given string
-// and status as a response.
-func textHandler(status int, text string) http.HandlerFunc {
-	return func(rw http.ResponseWriter, r *http.Request) {
-		rw.WriteHeader(status)
-		rw.Header().Add("Content-Type", "text/plain")
-		rw.Write([]byte(text))
-	}
-}
 
 func parseURL(values url.Values) (*Request, error) {
 	query := values.Get("query")
@@ -91,23 +80,24 @@ type Request struct {
 	ctx context.Context
 
 	// Schema and parsed query as a GraphQL document.
-	schema   *graphql.Schema `json:"-"`
-	document *qlast.Document `json:"-"`
+	schema *graphql.Schema        `json:"-"`
+	query  *graphql.QueryDocument `json:"-"`
 }
 
 func (r *Request) Operation() string {
-	if r.document == nil {
-		return OperationUnknown
-	}
-	if len(r.document.Definitions) < 1 {
-		return OperationUnknown
-	}
+	panic("Not Implemented")
+	// if r.document == nil {
+	// 	return OperationUnknown
+	// }
+	// if len(r.document.Definitions) < 1 {
+	// 	return OperationUnknown
+	// }
 
-	opdef, ok := r.document.Definitions[0].(*qlast.OperationDefinition)
-	if !ok {
-		return OperationUnknown
-	}
-	return opdef.Operation
+	// opdef, ok := r.document.Definitions[0].(*qlast.OperationDefinition)
+	// if !ok {
+	// 	return OperationUnknown
+	// }
+	// return opdef.Operation
 }
 
 // Context returns the request's context.
@@ -168,107 +158,17 @@ func ParseRequest(r *http.Request, schema *graphql.Schema) (gr *Request, err err
 		return gr, errors.Errorf("%s or %s verb is expected", http.MethodPost, http.MethodGet)
 	}
 
-	src := qlsrc.NewSource(&qlsrc.Source{
-		Body: []byte(gr.Query), Name: "Request Query",
-	})
-
-	gr.document, err = qlexpr.Parse(qlexpr.ParseParams{Source: src})
-	if err != nil {
-		return nil, err
+	query, e := graphparser.ParseQuery(&graphql.Source{Input: gr.Query})
+	if e != nil {
+		fmt.Println("???", grapherror.List{e}.Error())
+		return nil, e
 	}
 
 	// Copy the context of the HTTP request.
 	gr.Header = r.Header.Clone()
 	gr.ctx = r.Context()
+	gr.query = query
 	gr.schema = schema
 
 	return gr, nil
-}
-
-// ResponseWriter interface is used by a GraphQL handler to construct a response.
-type ResponseWriter interface {
-	Write(res *graphql.Result) error
-
-	IsWritten() bool
-}
-
-type responseWriter struct {
-	result *graphql.Result
-}
-
-func (rw *responseWriter) Write(res *graphql.Result) error {
-	rw.result = res
-	return nil
-}
-
-func (rw *responseWriter) IsWritten() bool {
-	return rw.result != nil
-}
-
-// Handler responds to a GraphQL request.
-//
-// Serve would write the reply to the ResponseWriter and then returns. Returning
-// signals that the request is finished.
-type Handler interface {
-	Serve(ResponseWriter, *Request)
-}
-
-type HandlerFunc func(ResponseWriter, *Request)
-
-func (fn HandlerFunc) Serve(rw ResponseWriter, r *Request) {
-	fn(rw, r)
-}
-
-// DefaultHandler is a default handler used by GraphQLhandler.
-func DefaultHandler(rw ResponseWriter, r *Request) {
-	result := graphql.Execute(graphql.ExecuteParams{
-		Schema:        *r.schema,
-		AST:           r.document,
-		OperationName: r.OperationName,
-		Args:          r.Variables,
-		Context:       r.Context(),
-	})
-
-	rw.Write(result)
-}
-
-func graphqlHandler(h Handler, schema graphql.Schema) http.HandlerFunc {
-	return func(rw http.ResponseWriter, r *http.Request) {
-		acceptHeader := r.Header.Get("Accept")
-		if _, ok := r.URL.Query()["raw"]; !ok && strings.Contains(acceptHeader, "text/html") {
-			handleGraphiQL(rw, r)
-			return
-		}
-
-		gr, err := ParseRequest(r, &schema)
-		if err != nil {
-			h := textHandler(http.StatusBadRequest, err.Error())
-			h.ServeHTTP(rw, r)
-			return
-		}
-
-		// Serve the GraphQL request and write the result through HTTP.
-		var grw responseWriter
-		h.Serve(&grw, gr)
-
-		b, err := json.Marshal(grw.result)
-		if err != nil {
-			h := textHandler(http.StatusInternalServerError, err.Error())
-			h.ServeHTTP(rw, r)
-			return
-		}
-
-		rw.WriteHeader(http.StatusOK)
-		rw.Write(b)
-	}
-}
-
-// GraphQLHandler returns a new HTTP handler that attempts to parse GraphQL
-// request from URL, body, or form and executes request using the specifies
-// schema.
-//
-// On failed request parsing and execution method writes plain error message
-// as a response.
-func GraphQLHandler(schema graphql.Schema) http.HandlerFunc {
-	return graphqlHandler(HandlerFunc(DefaultHandler), schema)
 }

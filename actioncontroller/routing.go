@@ -36,4 +36,5 @@ type Mapper interface {
 	Match(via, path string, action Action, constraints ...Constraints)
 
 	Map() (http.Handler, error)
+	// ListenAndServe(ctx context.Context) error
 }

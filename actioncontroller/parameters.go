@@ -18,10 +18,6 @@ func (p Parameters) Get(key string) Parameters {
 	return params
 }
 
-func (p Parameters) ToH() map[string]interface{} {
-	return (map[string]interface{})(p)
-}
-
 type StrongParameters struct {
 	Attributes []activerecord.Attribute
 }

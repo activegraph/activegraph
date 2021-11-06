@@ -2,6 +2,7 @@ package actionview
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/activegraph/activegraph/actioncontroller"
 	"github.com/activegraph/activegraph/activerecord"
@@ -36,30 +37,66 @@ func ContentResult(res activesupport.Result) actioncontroller.Result {
 func queryNested(
 	rec *activerecord.ActiveRecord,
 	selection actioncontroller.QueryAttribute,
-) (activesupport.Hash, error) {
-	fmt.Printf("\tnested: %s / %v\n", rec, selection)
-	assoc, err := rec.AccessAssociation(selection.AttributeName)
-	if err != nil {
-		return nil, err
+) (interface{}, error) {
+
+	target := rec.ReflectOnAssociation(selection.AttributeName)
+	fmt.Println("!!!", rec, strings.TrimSuffix(selection.AttributeName, "s"))
+	fmt.Printf("\tnested: %s / %v || %v\n", rec, selection, target)
+	if target == nil {
+		return nil, nil
 	}
 
-	assocHash := assoc.ToHash()
-	if len(selection.NestedAttributes) == 0 {
+	switch target.Association.(type) {
+	case activerecord.SingularAssociation:
+		result := rec.AccessAssociation(selection.AttributeName)
+		if result.Ok() == nil {
+			return result.Ok(), result.Err()
+		}
+
+		// TODO: Slice hash to take only necessary attributes.
+		assoc := result.UnwrapRecord()
+		assocHash := assoc.ToHash()
+		for _, sel := range selection.NestedAttributes {
+			if _, ok := assocHash[sel.AttributeName]; ok {
+				continue
+			}
+
+			selectionHash, err := queryNested(assoc, sel)
+			if err != nil {
+				return nil, err
+			}
+			assocHash[sel.AttributeName] = selectionHash
+		}
 		return assocHash, nil
-	}
-
-	for _, sel := range selection.NestedAttributes {
-		if _, ok := assocHash[sel.AttributeName]; ok {
-			continue
+	case activerecord.CollectionAssociation:
+		collection := rec.AccessCollection(selection.AttributeName)
+		if collection.Ok() == nil {
+			return collection.Ok(), collection.Err()
 		}
 
-		selectionHash, err := queryNested(assoc, sel)
-		if err != nil {
-			return nil, err
+		assocs := collection.ToA()
+		result := make([]activesupport.Hash, 0, len(assocs))
+		for _, assoc := range assocs {
+			// TODO: Slice hash to take only necessary attributes.
+			assocHash := assoc.ToHash()
+			for _, sel := range selection.NestedAttributes {
+				if _, ok := assocHash[sel.AttributeName]; ok {
+					continue
+				}
+
+				selectionHash, err := queryNested(assoc, sel)
+				if err != nil {
+					return nil, err
+				}
+				assocHash[sel.AttributeName] = selectionHash
+			}
+			result = append(result, assocHash)
 		}
-		assocHash[sel.AttributeName] = selectionHash
+		return result, nil
+	default:
+		// TODO: replace with an error.
+		panic("unknown target association")
 	}
-	return assocHash, nil
 }
 
 func GraphResult(ctx *actioncontroller.Context, res activerecord.Result) actioncontroller.Result {
@@ -68,9 +105,11 @@ func GraphResult(ctx *actioncontroller.Context, res activerecord.Result) actionc
 	}
 
 	record := res.UnwrapRecord()
-	recordHash := record.ToHash()
+	recordHash := make(activesupport.Hash)
+
 	for _, sel := range ctx.Selection {
-		if _, ok := recordHash[sel.AttributeName]; ok {
+		if record.HasAttribute(sel.AttributeName) {
+			recordHash[sel.AttributeName] = record.Attribute(sel.AttributeName)
 			continue
 		}
 

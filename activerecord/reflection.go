@@ -28,7 +28,7 @@ func (r *Reflection) AddReflection(name string, rel *Relation) {
 func (r *Reflection) Reflection(name string) (*Relation, error) {
 	rel, ok := r.rels[name]
 	if !ok {
-		return nil, errors.Errorf("unknown reflection %q", name)
+		return nil, errors.Errorf("unknown relation %q", name)
 	}
 	return rel, nil
 }

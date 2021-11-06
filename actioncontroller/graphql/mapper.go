@@ -5,11 +5,10 @@ import (
 	"net/http"
 	"strings"
 
+	graphql "github.com/vektah/gqlparser/v2/ast"
+
 	"github.com/activegraph/activegraph/actioncontroller"
 	"github.com/activegraph/activegraph/activerecord"
-
-	"github.com/graphql-go/graphql"
-	"github.com/graphql-go/graphql/language/ast"
 )
 
 type ErrConstraintNotFound struct {
@@ -24,76 +23,169 @@ func (e ErrConstraintNotFound) Error() string {
 	)
 }
 
-const (
-	// GraphQL operations.
-	OperationQuery        = "query"        // a read-only fetch.
-	OperationMutation     = "mutation"     // a write followed by fetch.
-	OperationSubscription = "subscription" // unsupported yet.
-	OperationUnknown      = ""
-)
-
-func typeconv(t activerecord.Type) graphql.Type {
+func scalarconv(t activerecord.Type) *graphql.Type {
 	switch t := t.(type) {
 	case *activerecord.Int64:
-		return graphql.NewNonNull(graphql.Int)
+		return &graphql.Type{NonNull: true, Elem: graphql.NamedType(Int.Name, nil)}
 	case *activerecord.String:
-		return graphql.NewNonNull(graphql.String)
-	case *activerecord.Boolean:
-		return graphql.NewNonNull(graphql.Boolean)
-	case *activerecord.Float64:
-		return graphql.NewNonNull(graphql.Float)
+		return &graphql.Type{NonNull: true, Elem: graphql.NamedType(String.Name, nil)}
 	case *activerecord.DateTime:
-		return graphql.NewNonNull(DateTime)
+		return &graphql.Type{NonNull: true, Elem: graphql.NamedType(DateTime.Name, nil)}
 	case activerecord.Nil:
-		if gt := typeconv(t.Type); gt != nil {
-			return graphql.GetNullable(gt).(graphql.Type)
-		}
+		return scalarconv(t.Type).Elem
+	default:
+		panic(t.String())
 	}
-	return nil
 }
 
-func argsconv(attrs []activerecord.Attribute) graphql.FieldConfigArgument {
-	args := make(graphql.FieldConfigArgument, len(attrs))
-	for _, attr := range attrs {
-		args[attr.AttributeName()] = &graphql.ArgumentConfig{
-			Type: typeconv(attr.AttributeType()),
-		}
-	}
-	return args
+func CanonicalModelName(modelName string) string {
+	return strings.Title(modelName)
 }
 
-func payloadconv(name string, attrs []activerecord.Attribute) *graphql.Object {
-	fields := make(graphql.Fields, len(attrs))
-	for _, attr := range attrs {
-		fields[attr.AttributeName()] = &graphql.Field{
-			Name: attr.AttributeName(), Type: typeconv(attr.AttributeType()),
-		}
-	}
-	return graphql.NewObject(graphql.ObjectConfig{Name: name, Fields: fields})
+type Schema struct {
+	root *graphql.Schema
 }
 
-func objconv(name string, model *activerecord.Relation, viewed map[string]struct{}) *graphql.Object {
-	attrs := model.AttributesForInspect()
-	fields := make(graphql.Fields, len(attrs))
-
-	for _, attr := range attrs {
-		fields[attr.AttributeName()] = &graphql.Field{
-			Name: attr.AttributeName(), Type: typeconv(attr.AttributeType()),
-		}
+func (s *Schema) AddIndexOp(model *activerecord.Relation) *graphql.FieldDefinition {
+	def := &graphql.FieldDefinition{
+		Name: model.Name() + "s",
+		Type: &graphql.Type{
+			Elem: &graphql.Type{
+				NonNull: true,
+				Elem:    graphql.NamedType(CanonicalModelName(model.Name()), nil),
+			},
+		},
 	}
 
-	viewed[name] = struct{}{}
-	for _, assoc := range model.ReflectOnAllAssociations() {
-		if _, ok := viewed[strings.Title(assoc.AssociationName())]; ok {
+	s.root.Query.Fields = append(s.root.Query.Fields, def)
+	return def
+}
+
+func (s *Schema) AddShowOp(model *activerecord.Relation) *graphql.FieldDefinition {
+	def := &graphql.FieldDefinition{
+		Name: model.Name(),
+		Arguments: graphql.ArgumentDefinitionList{
+			{
+				Name: model.PrimaryKey(),
+				Type: scalarconv(model.AttributeForInspect(model.PrimaryKey()).AttributeType()),
+			},
+		},
+		Type: graphql.NamedType(CanonicalModelName(model.Name()), nil),
+	}
+
+	s.root.Query.Fields = append(s.root.Query.Fields, def)
+	return def
+}
+
+func (s *Schema) AddCreateOp(
+	model *activerecord.Relation, action actioncontroller.Action,
+) *graphql.FieldDefinition {
+	inputs := action.ActionRequest()
+	args := make(graphql.ArgumentDefinitionList, 0, len(inputs))
+
+	for _, input := range inputs {
+		// TODO: add support of objects.
+		args = append(args, &graphql.ArgumentDefinition{
+			Name: input.AttributeName(),
+			Type: scalarconv(input.AttributeType()),
+		})
+	}
+
+	def := &graphql.FieldDefinition{
+		Name:      "create" + CanonicalModelName(model.Name()),
+		Arguments: args,
+		Type:      graphql.NamedType(CanonicalModelName(model.Name()), nil),
+	}
+
+	s.root.Mutation.Fields = append(s.root.Mutation.Fields, def)
+	return def
+}
+
+func (s *Schema) AddDestroyOp(model *activerecord.Relation) *graphql.FieldDefinition {
+	def := &graphql.FieldDefinition{
+		Name: "delete" + CanonicalModelName(model.Name()),
+		Arguments: graphql.ArgumentDefinitionList{
+			{
+				Name: model.PrimaryKey(),
+				Type: scalarconv(model.AttributeForInspect(model.PrimaryKey()).AttributeType()),
+			},
+		},
+		Type: graphql.NamedType(CanonicalModelName(model.Name()), nil),
+	}
+
+	s.root.Mutation.Fields = append(s.root.Mutation.Fields, def)
+	return def
+}
+
+func (s *Schema) AddModel(model *activerecord.Relation) *graphql.Definition {
+	queue := []*activerecord.Relation{model}
+	canonicalName := CanonicalModelName(model.Name())
+
+	for len(queue) != 0 {
+		model = queue[0]
+		queue = queue[1:]
+
+		// Ensure the model is not registered yet with this name.
+		name := CanonicalModelName(model.Name())
+		if _, ok := s.root.Types[name]; ok {
 			continue
 		}
-		fields[assoc.AssociationName()] = &graphql.Field{
-			Name: assoc.AssociationName(),
-			Type: objconv(strings.Title(assoc.AssociationName()), assoc.Relation, viewed),
+
+		attrs := model.AttributesForInspect()
+		assocs := model.ReflectOnAllAssociations()
+
+		fields := make(graphql.FieldList, 0, len(attrs)+len(assocs))
+
+		for _, attr := range attrs {
+			fields = append(fields, &graphql.FieldDefinition{
+				Name: attr.AttributeName(),
+				Type: scalarconv(attr.AttributeType()),
+			})
+		}
+
+		for _, assoc := range assocs {
+			// Put a type dependency to the queue of registration.
+			queue = append(queue, assoc.Relation)
+
+			var (
+				assocName string
+				assocType *graphql.Type
+			)
+
+			switch assoc.Association.(type) {
+			case activerecord.SingularAssociation:
+				assocName = assoc.AssociationName()
+				assocType = graphql.NamedType(CanonicalModelName(assoc.Relation.Name()), nil)
+			case activerecord.CollectionAssociation:
+				// TODO: take name from the reflection?
+				assocName = assoc.AssociationName() + "s"
+				assocType = &graphql.Type{
+					Elem: &graphql.Type{
+						NonNull: true,
+						Elem:    graphql.NamedType(CanonicalModelName(assoc.Relation.Name()), nil),
+					},
+				}
+			default:
+				panic(fmt.Errorf("association type %T is not supported", assoc))
+			}
+
+			fields = append(fields, &graphql.FieldDefinition{
+				Name: assocName,
+				// TODO: what about modifications (non-nil) ?
+				Type: assocType,
+			})
+		}
+
+		// Register a new object type.
+		s.root.Types[name] = &graphql.Definition{
+			Kind:       graphql.Object,
+			Name:       name,
+			Interfaces: make([]string, 0),
+			Fields:     fields,
 		}
 	}
 
-	return graphql.NewObject(graphql.ObjectConfig{Name: name, Fields: fields})
+	return s.root.Types[canonicalName]
 }
 
 type resource struct {
@@ -106,42 +198,6 @@ type matching struct {
 	name        string
 	action      actioncontroller.Action
 	constraints actioncontroller.Constraints
-}
-
-func queryconv(selections []ast.Selection) []actioncontroller.QueryAttribute {
-	attrs := make([]actioncontroller.QueryAttribute, 0, len(selections))
-	for _, sel := range selections {
-		field, ok := sel.(*ast.Field)
-		if !ok {
-			continue
-		}
-
-		attr := actioncontroller.QueryAttribute{
-			AttributeName: field.Name.Value,
-		}
-		if field.SelectionSet != nil {
-			attr.NestedAttributes = queryconv(field.SelectionSet.Selections)
-		}
-		attrs = append(attrs, attr)
-	}
-	return attrs
-}
-
-func newResolveFunc(action actioncontroller.Action) graphql.FieldResolveFn {
-	return func(p graphql.ResolveParams) (interface{}, error) {
-		context := &actioncontroller.Context{
-			Context: p.Context,
-			Params:  actioncontroller.Parameters(p.Args),
-		}
-
-		if len(p.Info.FieldASTs) > 0 {
-			selections := p.Info.FieldASTs[0].SelectionSet.Selections
-			context.Selection = queryconv(selections)
-		}
-
-		result := action.Process(context)
-		return result.Execute(context)
-	}
 }
 
 type Mapper struct {
@@ -174,165 +230,71 @@ func (m *Mapper) Match(
 	m.matchings = append(m.matchings, matching{via, path, action, constraint})
 }
 
-func (m *Mapper) primaryKey(model actioncontroller.AbstractModel) graphql.FieldConfigArgument {
-	return graphql.FieldConfigArgument{
-		model.PrimaryKey(): &graphql.ArgumentConfig{
-			Type: typeconv(model.AttributeForInspect(model.PrimaryKey()).AttributeType()),
-		},
-	}
-}
-
-func (m *Mapper) newAction(
-	name string,
-	args []activerecord.Attribute,
-	result []activerecord.Attribute,
-	action actioncontroller.Action,
-) *graphql.Field {
-	return &graphql.Field{
-		Name:    name,
-		Args:    argsconv(args),
-		Type:    payloadconv(strings.Title(name)+"Payload", result),
-		Resolve: newResolveFunc(action),
-	}
-}
-
-func (m *Mapper) newIndexAction(
-	model actioncontroller.AbstractModel, output graphql.Output, action actioncontroller.Action,
-) *graphql.Field {
-
-	args := make(graphql.FieldConfigArgument, len(action.ActionRequest()))
-	for _, attr := range action.ActionRequest() {
-		args[attr.AttributeName()] = &graphql.ArgumentConfig{
-			Type: typeconv(attr.AttributeType()),
-		}
-	}
-
-	return &graphql.Field{
-		Name:    model.Name() + "s",
-		Args:    args,
-		Type:    graphql.NewList(output),
-		Resolve: newResolveFunc(action),
-	}
-}
-
-func (m *Mapper) newShowAction(
-	model actioncontroller.AbstractModel, output graphql.Output, action actioncontroller.Action,
-) *graphql.Field {
-	return &graphql.Field{
-		Name:    model.Name(),
-		Args:    m.primaryKey(model),
-		Type:    output,
-		Resolve: newResolveFunc(action),
-	}
-}
-
-func (m *Mapper) newUpdateAction(
-	operation string, model actioncontroller.AbstractModel, output graphql.Output, action actioncontroller.Action,
-) *graphql.Field {
-
-	objFields := make(graphql.InputObjectConfigFieldMap, len(action.ActionRequest()))
-	for _, attr := range action.ActionRequest() {
-		objFields[attr.AttributeName()] = &graphql.InputObjectFieldConfig{
-			Type: typeconv(attr.AttributeType()),
-		}
-	}
-
-	args := graphql.FieldConfigArgument{
-		model.Name(): &graphql.ArgumentConfig{
-			Type: graphql.NewNonNull(graphql.NewInputObject(graphql.InputObjectConfig{
-				Name:   strings.Title(operation) + strings.Title(model.Name()) + "Input",
-				Fields: objFields,
-			})),
-		},
-	}
-
-	// TODO: separate creation and update
-	if operation == "update" {
-		args[model.PrimaryKey()] = m.primaryKey(model)[model.PrimaryKey()]
-	}
-
-	return &graphql.Field{
-		Name:    operation + strings.Title(model.Name()),
-		Args:    args,
-		Type:    output,
-		Resolve: newResolveFunc(action),
-	}
-}
-
-func (m *Mapper) newDestroyAction(
-	model actioncontroller.AbstractModel, output graphql.Output, action actioncontroller.Action,
-) *graphql.Field {
-	return &graphql.Field{
-		Name:    "delete" + strings.Title(model.Name()),
-		Args:    m.primaryKey(model),
-		Type:    output,
-		Resolve: newResolveFunc(action),
-	}
-}
-
 func (m *Mapper) Map() (http.Handler, error) {
-	queries := make(graphql.Fields)
-	mutations := make(graphql.Fields)
+	schema := &graphql.Schema{
+		Query: &graphql.Definition{
+			Name: "Query",
+			Kind: graphql.Object,
+		},
+		Mutation: &graphql.Definition{
+			Name: "Mutation",
+			Kind: graphql.Object,
+		},
+		Types: make(map[string]*graphql.Definition),
+	}
+
+	schema.Types["Query"] = schema.Query
+	schema.Types["Mutation"] = schema.Mutation
+
+	schema.Types["Int"] = Int
+	schema.Types["String"] = String
+	schema.Types["DateTime"] = DateTime
+
+	rootSchema := Schema{schema}
+	routing := NewRoutingTable()
 
 	for _, resource := range m.resources {
-		output := objconv(
-			strings.Title(resource.model.Name()),
-			resource.model.(*activerecord.Relation),
-			// TODO: rework without recursion.
-			make(map[string]struct{}),
-		)
+		model := resource.model.(*activerecord.Relation)
+		rootSchema.AddModel(model)
 
 		for _, action := range resource.controller.ActionMethods() {
 			switch action.ActionName() {
-			case actioncontroller.ActionIndex:
-				query := m.newIndexAction(resource.model, output, action)
-				queries[query.Name] = query
 			case actioncontroller.ActionShow:
-				query := m.newShowAction(resource.model, output, action)
-				queries[query.Name] = query
-			case actioncontroller.ActionUpdate, actioncontroller.ActionCreate:
-				mutation := m.newUpdateAction(action.ActionName(), resource.model, output, action)
-				mutations[mutation.Name] = mutation
+				op := rootSchema.AddShowOp(model)
+				routing.AddOperation(op.Name, action)
+			case actioncontroller.ActionIndex:
+				op := rootSchema.AddIndexOp(model)
+				routing.AddOperation(op.Name, action)
+			case actioncontroller.ActionCreate:
+				op := rootSchema.AddCreateOp(model, action)
+				routing.AddOperation(op.Name, action)
 			case actioncontroller.ActionDestroy:
-				mutation := m.newDestroyAction(resource.model, output, action)
-				mutations[mutation.Name] = mutation
+				op := rootSchema.AddDestroyOp(model)
+				routing.AddOperation(op.Name, action)
 			default:
-				// println("consider registering non-canonical action?")
+				fmt.Printf("action %q is not supported\n", action.ActionName())
 			}
 		}
 	}
 
-	for _, matching := range m.matchings {
-		switch matching.operation {
-		case OperationQuery:
-		case OperationMutation:
-			mutations[matching.name] = m.newAction(
-				matching.name,
-				matching.constraints.Request.Attributes,
-				matching.constraints.Response.Attributes,
-				matching.action,
-			)
+	handler := func(rw ResponseWriter, r *Request) {
+		if r.query.Operations.ForName("IntrospectionQuery") != nil {
+			IntrospectionHandler(rw, r)
+			return
+		}
+
+		for _, op := range r.query.Operations {
+			for _, selection := range op.SelectionSet {
+				field := selection.(*graphql.Field)
+				data, err := routing.Dispatch(r, field)
+
+				rw.WriteError(err)
+				rw.WriteData(field.Name, data)
+			}
 		}
 	}
 
-	var mutation *graphql.Object
-	if len(mutations) > 0 {
-		mutation = graphql.NewObject(graphql.ObjectConfig{
-			Name: "Mutation", Fields: mutations,
-		})
-	}
-	query := graphql.NewObject(graphql.ObjectConfig{
-		Name: "Query", Fields: queries,
-	})
-
-	schema, err := graphql.NewSchema(graphql.SchemaConfig{
-		Query: query, Mutation: mutation,
-	})
-	if err != nil {
-		return nil, err
-	}
-
 	mux := http.NewServeMux()
-	mux.Handle("/graphql", GraphQLHandler(schema))
+	mux.Handle("/graphql", NewHandler(HandlerFunc(handler), schema))
 	return mux, nil
 }
