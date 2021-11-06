@@ -102,7 +102,7 @@ func TestActiveRecord_Insert(t *testing.T) {
 	require.NoError(t, err)
 	t.Log(authors)
 
-	bb := author1.UnwrapRecord().Collection("book").ToA()
+	bb := author1.UnwrapRecord().Collection("books").ToA()
 	t.Logf("%#v", bb)
 	require.Len(t, bb, 3)
 
