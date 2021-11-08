@@ -17,109 +17,207 @@ func (e ErrRecordNotFound) Error() string {
 	return fmt.Sprintf("record not found by %s = %v", e.PrimaryKey, e.ID)
 }
 
-type CollectionResult interface {
+type CollectionOption struct {
+	activesupport.Option
+}
+
+// NoneCollection is no Collection value.
+var NoneCollection = CollectionOption{activesupport.None(_CollectionType)}
+
+// SomeCollection is a value of Relation.
+func SomeCollection(r *Relation) CollectionOption {
+	return CollectionOption{activesupport.Some(_CollectionType, r)}
+}
+
+func (o CollectionOption) Unwrap() *Relation {
+	return o.Option.Unwrap().(*Relation)
+}
+
+func (o CollectionOption) UnwrapOrDefault() *Relation {
+	return o.Option.UnwrapOrDefault().(*Relation)
+}
+
+type CollectionResult struct {
 	activesupport.Result
-
-	UnwrapRelation() *Relation
-
-	ToA() Array
-
-	// QueryMethods
 }
 
 func ReturnCollection(rel *Relation, err error) CollectionResult {
-	return collectionResult{activesupport.Return(rel, err)}
+	switch rel {
+	case nil:
+		return CollectionResult{
+			activesupport.Return(_CollectionType, NoneCollection, err),
+		}
+	default:
+		return CollectionResult{
+			activesupport.Return(_CollectionType, SomeCollection(rel), err),
+		}
+	}
 }
 
-func OkCollection(rel *Relation) CollectionResult {
-	return collectionResult{activesupport.Ok(rel)}
+func OkCollection(option CollectionOption) CollectionResult {
+	return CollectionResult{activesupport.Ok(_CollectionType, option)}
 }
 
 func ErrCollection(err error) CollectionResult {
-	return collectionResult{activesupport.Err(err)}
+	return ReturnCollection(nil, err)
 }
 
-type collectionResult struct {
-	activesupport.SomeResult
+func (r CollectionResult) Ok() CollectionOption {
+	return r.Result.Ok().UnwrapOr(NoneCollection).(CollectionOption)
 }
 
-func (r collectionResult) andThen(op func(*Relation) (*Relation, error)) CollectionResult {
-	if r.IsOk() {
-		return ReturnCollection(op(r.Ok().(*Relation)))
-	}
-	return r
+func (r CollectionResult) Unwrap() *Relation {
+	return r.Ok().Unwrap()
 }
 
-func (r collectionResult) UnwrapRelation() *Relation {
-	return r.Unwrap().(*Relation)
-}
+// func (r CollectionResult) AndThen(op func(CollectionOption) CollectionResult) CollectionResult {
+// 	result := r.Result.AndThen(func(val interface{}) activesupport.Result {
+// 		return op(val.(CollectionOption)).Result
+// 	})
+// 	return CollectionResult{result}
+// }
 
-func (r collectionResult) ToA() Array {
-	arr, _ := r.UnwrapRelation().ToA()
+func (r CollectionResult) ToA() Array {
+	arr, _ := r.Unwrap().ToA()
 	return arr
 }
 
-func (r collectionResult) Len() int {
+func (r CollectionResult) Len() int {
 	return 0
 }
 
-type Result interface {
-	activesupport.Result
+// type Result interface {
+// 	activesupport.Result
+//
+// 	UnwrapRecord() *ActiveRecord
+//
+// 	Insert() Result
+// 	Update() Result
+// 	Delete() Result
+//
+// 	// TODO:
+// 	// Upsert() Record
+// 	// Destroy() Record
+//
+// 	AttributeMethods
+// 	// AttributeAccessors
+//
+// 	// AssociationMethods
+// 	// AggregationMethods
+//
+// 	AssociationAccessors
+// 	CollectionAccessors
+// }
+var (
+	// _ AssociationAccessors = Result{}
+	// _ CollectionAccessors  = Result{}
 
-	UnwrapRecord() *ActiveRecord
+	_Type           = new(_TypeImpl)
+	_CollectionType = new(_CollectionTypeImpl)
+)
 
-	Insert() Result
-	Update() Result
-	Delete() Result
+type _TypeImpl struct{}
 
-	// TODO:
-	// Upsert() Record
-	// Destroy() Record
+func (*_TypeImpl) Default() interface{} { return (*ActiveRecord)(nil) }
 
-	// AttributeMethods
-	// AttributeAccessors
+type _CollectionTypeImpl struct{}
 
-	// AssociationMethods
-	// AggregationMethods
+func (*_CollectionTypeImpl) Default() interface{} { return (*Relation)(nil) }
+
+type Option struct {
+	activesupport.Option
+}
+
+// None is no ActiveRecord value.
+var None = Option{activesupport.None(_Type)}
+
+// Some value of ActiveRecord.
+func Some(r *ActiveRecord) Option {
+	return Option{activesupport.Some(_Type, r)}
+}
+
+func (o Option) Unwrap() *ActiveRecord {
+	return o.Option.Unwrap().(*ActiveRecord)
+}
+
+func (o Option) UnwrapOrDefault() *ActiveRecord {
+	return o.Option.UnwrapOrDefault().(*ActiveRecord)
 }
 
 func Return(r *ActiveRecord, err error) Result {
-	return result{activesupport.Return(r, err)}
+	switch r {
+	case nil:
+		return Result{activesupport.Return(_Type, None, err)}
+	default:
+		return Result{activesupport.Return(_Type, Some(r), err)}
+	}
 }
 
-func Ok(r *ActiveRecord) Result {
-	return result{activesupport.Ok(r)}
+func Ok(option Option) Result {
+	return Result{activesupport.Ok(_Type, option)}
 }
 
 func Err(err error) Result {
-	return result{activesupport.Err(err)}
+	return Return(nil, err)
 }
 
-type result struct {
-	activesupport.SomeResult
+type Result struct {
+	activesupport.Result
 }
 
-func (r result) UnwrapRecord() *ActiveRecord {
-	return r.Unwrap().(*ActiveRecord)
+func (r Result) Ok() Option {
+	return r.Result.Ok().UnwrapOr(None).(Option)
 }
 
-func (r result) andThen(op func(*ActiveRecord) (*ActiveRecord, error)) Result {
-	if r.IsOk() {
-		return Return(op(r.Ok().(*ActiveRecord)))
+func (r Result) Unwrap() *ActiveRecord {
+	return r.Ok().Unwrap()
+}
+
+// func (r *Result) AttributePresent(attrName string) bool {
+// }
+// func (r *Result) Attribute(attrName string) interface{} {
+// }
+// func (r *Result) AccessAttribute(attrName string) interface{} {
+// }
+// func (r *Result) AssignAttribute(attrName string, val interface{}) error {
+// }
+// func (r *Result) AssignAttributes(newAttributes map[string]interface{}) error {
+// }
+
+func (r Result) AndThen(op func(Option) Result) Result {
+	result := r.Result.AndThen(func(val interface{}) activesupport.Result {
+		return op(val.(Option)).Result
+	})
+	return Result{result}
+}
+
+func (r Result) Insert() Result {
+	return r.AndThen(func(o Option) Result {
+		if o.IsNone() {
+			return Ok(None)
+		}
+		return Return(o.Unwrap().Insert())
+	})
+}
+func (r Result) Update() Result { return Err(fmt.Errorf("not implemented")) }
+func (r Result) Delete() Result { return Err(fmt.Errorf("not implemented")) }
+
+func (r Result) Association(name string) Result {
+	switch r.Ok() {
+	case None:
+		return r
+	default:
+		return r.Unwrap().Association(name)
 	}
-	return r
 }
 
-func (r result) Insert() Result {
-	return r.andThen((*ActiveRecord).Insert)
-}
-
-func (r result) Update() Result {
-	return r.andThen((*ActiveRecord).Update)
-}
-
-func (r result) Delete() Result {
-	return r.andThen((*ActiveRecord).Delete)
+func (r Result) Collection(name string) CollectionResult {
+	switch r.Ok() {
+	case None:
+		return OkCollection(NoneCollection)
+	default:
+		return r.Unwrap().Collection(name)
+	}
 }
 
 type ActiveRecord struct {
@@ -128,7 +226,10 @@ type ActiveRecord struct {
 	conn      Conn
 	ctx       context.Context
 
-	attributes
+	attributes *attributes
+	AttributeMethods
+	AttributeAccessors
+
 	validations
 
 	associations *associations
@@ -138,6 +239,9 @@ type ActiveRecord struct {
 }
 
 func (r *ActiveRecord) init() *ActiveRecord {
+	r.AttributeMethods = r.attributes
+	r.AttributeAccessors = r.attributes
+
 	r.associations.delegateAccessors(r)
 
 	r.AssociationMethods = r.associations
@@ -167,7 +271,7 @@ func (r *ActiveRecord) Copy() *ActiveRecord {
 		tableName:    r.tableName,
 		conn:         r.conn,
 		ctx:          r.ctx,
-		attributes:   *r.attributes.copy(),
+		attributes:   r.attributes.copy(),
 		associations: r.associations.copy(),
 	}).init()
 }
@@ -191,7 +295,7 @@ func (r *ActiveRecord) String() string {
 
 	attrNames := r.AttributeNames()
 	for i, attrName := range attrNames {
-		fmt.Fprintf(&buf, "%s: %#v", attrName, r.AccessAttribute(attrName))
+		fmt.Fprintf(&buf, "%s: %#v", attrName, r.Attribute(attrName))
 		if i < len(attrNames)-1 {
 			fmt.Fprint(&buf, ", ")
 		}
@@ -220,17 +324,6 @@ func (r *ActiveRecord) AssignAssociation(assocName string, rec *ActiveRecord) er
 	return nil
 }
 
-// Association returns the associated object, nil is returned if none is found.
-func (r *ActiveRecord) Association(assocName string) *ActiveRecord {
-	return r.AccessAssociation(assocName).UnwrapRecord()
-}
-
-// Collection returns a Relation of all associated records. A nil is returned
-// if relation does not belong to the record.
-func (r *ActiveRecord) Collection(assocName string) CollectionResult {
-	return r.AccessCollection(assocName)
-}
-
 func (r *ActiveRecord) Insert() (*ActiveRecord, error) {
 	if err := r.Validate(); err != nil {
 		return nil, err
@@ -255,7 +348,7 @@ func (r *ActiveRecord) Insert() (*ActiveRecord, error) {
 		return nil, err
 	}
 
-	err = r.AssignAttribute(r.primaryKey.AttributeName(), id)
+	err = r.AssignAttribute(r.attributes.primaryKey.AttributeName(), id)
 	if err != nil {
 		return nil, err
 	}
@@ -269,7 +362,7 @@ func (r *ActiveRecord) Update() (*ActiveRecord, error) {
 func (r *ActiveRecord) Delete() (*ActiveRecord, error) {
 	op := DeleteOperation{
 		TableName:  r.tableName,
-		PrimaryKey: r.primaryKey.AttributeName(),
+		PrimaryKey: r.attributes.primaryKey.AttributeName(),
 		Value:      r.ID(),
 	}
 

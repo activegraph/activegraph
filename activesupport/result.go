@@ -7,8 +7,8 @@ import (
 )
 
 // Result is a type that represents either success (Ok) or failure (Err).
-type Result interface {
-	Ok() interface{}
+type result interface {
+	Ok() Option
 	Err() error
 
 	IsOk() bool
@@ -22,62 +22,73 @@ type Result interface {
 	Contains(val interface{}) bool
 
 	Unwrap() interface{}
+	UnwrapOr(val interface{}) interface{}
 
 	Expect(msg string) interface{}
 	ExpectErr(msg string) error
 }
 
-type SomeResult struct {
+var _ result = Result{}
+
+type Result struct {
+	t   T
 	val interface{}
 	err error
 }
 
-func Return(val interface{}, err error) SomeResult {
-	return SomeResult{val: val, err: err}
+func Return(t T, val interface{}, err error) Result {
+	return Result{t: t, val: val, err: err}
 }
 
-func Ok(val interface{}) SomeResult {
-	return SomeResult{val: val}
+func Ok(t T, val interface{}) Result {
+	return Result{t: t, val: val}
 }
 
-func Err(err error) SomeResult {
-	return SomeResult{err: err}
+func Err(t T, err error) Result {
+	return Result{t: t, err: err}
 }
 
-func ErrText(text string) SomeResult {
-	return SomeResult{err: errors.New(text)}
+func ErrText(t T, text string) Result {
+	return Result{t: t, err: errors.New(text)}
+}
+
+func (self Result) T() T {
+	return self.t
 }
 
 // String returns a string representation of the self.
-func (self SomeResult) String() string {
+func (self Result) String() string {
 	if self.IsOk() {
 		return fmt.Sprintf("Ok(%s)", self.val)
 	}
-	return fmt.Sprintf("Err(%s)", self.err)
+	return fmt.Sprintf("Err(%T)", self.err)
 }
 
 // Err returns the error value.
-func (self SomeResult) Err() error {
+func (self Result) Err() error {
 	return self.err
 }
 
 // Ok returns the success value.
-func (self SomeResult) Ok() interface{} {
-	return self.val
+func (self Result) Ok() Option {
+	if self.IsErr() {
+		return None(self.T())
+	}
+	return Some(self.T(), self.val)
 }
 
 // IsOk returns true if the result is Ok.
-func (self SomeResult) IsOk() bool {
+func (self Result) IsOk() bool {
 	return self.err == nil
 }
 
 // IsErr returns true if the result if Err.
-func (self SomeResult) IsErr() bool {
+func (self Result) IsErr() bool {
 	return self.err != nil
 }
 
 // And returns res if the result is Ok, otherwise returns the Err value of self.
-func (self SomeResult) And(res Result) Result {
+func (self Result) And(res Result) Result {
 	if res.Err() == nil && self.err == nil {
 		return res
 	}
@@ -85,7 +96,7 @@ func (self SomeResult) And(res Result) Result {
 }
 
 // AndThen calls op if the result is Ok, otherwise returns the Err value of self.
-func (self SomeResult) AndThen(op func(interface{}) Result) Result {
+func (self Result) AndThen(op func(interface{}) Result) Result {
 	if self.err == nil {
 		return op(self.val)
 	}
@@ -93,7 +104,7 @@ func (self SomeResult) AndThen(op func(interface{}) Result) Result {
 }
 
 // Or returns res if the result is Err, otherwise returns the Ok value of self.
-func (self SomeResult) Or(res Result) Result {
+func (self Result) Or(res Result) Result {
 	if self.err != nil {
 		return res
 	}
@@ -101,34 +112,42 @@ func (self SomeResult) Or(res Result) Result {
 }
 
 // OrElse calls op if the result is Err, otherwise retuns the Ok value of self.
-func (self SomeResult) OrElse(op func(error) Result) Result {
+func (self Result) OrElse(op func(error) Result) Result {
 	if self.err != nil {
 		return op(self.err)
 	}
 	return self
 }
 
-func (self SomeResult) Contains(val interface{}) bool {
+func (self Result) Contains(val interface{}) bool {
 	return self.val == val
 }
 
-func (self SomeResult) Expect(msg string) interface{} {
+func (self Result) Expect(msg string) interface{} {
 	if self.err != nil {
 		panic(errors.WithMessage(self.err, msg))
 	}
 	return self.val
 }
 
-func (self SomeResult) ExpectErr(msg string) error {
+func (self Result) ExpectErr(msg string) error {
 	if self.err == nil {
 		panic(errors.WithMessagef(errors.New(msg), "%v", self.val))
 	}
 	return self.err
 }
 
-func (self SomeResult) Unwrap() interface{} {
+func (self Result) Unwrap() interface{} {
 	if self.err != nil {
 		panic(self.err)
+	}
+	return self.val
+}
+
+// UnwrapOr returns the contained Ok value or a provided default.
+func (self Result) UnwrapOr(val interface{}) interface{} {
+	if self.IsErr() {
+		return val
 	}
 	return self.val
 }

@@ -128,7 +128,7 @@ func (v *validations) validate(rec *ActiveRecord) error {
 	v.errors.Delete()
 
 	for attrName, validators := range v.validators {
-		value := rec.AccessAttribute(attrName)
+		value := rec.Attribute(attrName)
 
 		for _, validator := range validators {
 			if (value == nil && validator.AllowsNil()) ||

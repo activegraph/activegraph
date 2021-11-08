@@ -102,7 +102,7 @@ func TestRelation_JoinsOK(t *testing.T) {
 		assocs, ok := associations[book.ID().(int64)]
 		assert.True(t, ok)
 
-		assert.Equal(t, assocs.authorId, book.Association("author").ID())
-		assert.Equal(t, assocs.publisherId, book.Association("publisher").ID())
+		assert.Equal(t, assocs.authorId, book.Association("author").Unwrap().ID())
+		assert.Equal(t, assocs.publisherId, book.Association("publisher").Unwrap().ID())
 	}
 }
