@@ -98,8 +98,7 @@ func TestActiveRecord_Insert(t *testing.T) {
 	author := book1.Association("author").Unwrap()
 	t.Logf("%s", author)
 
-	authors, err := Author.All().ToA()
-	require.NoError(t, err)
+	authors := Author.All().Expect("Expecting all authors")
 	t.Log(authors)
 
 	bb := author1.Collection("books").ToA()
@@ -109,7 +108,7 @@ func TestActiveRecord_Insert(t *testing.T) {
 	// bb, _ = books.Where("year", 1851).ToA()
 	// t.Log(bb)
 
-	books := Book.All().Group("author_id", "year").Select("author_id", "year")
+	books := Book.All().Unwrap().Group("author_id", "year").Select("author_id", "year")
 
 	t.Log(books)
 	bb, err = books.ToA()

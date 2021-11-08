@@ -346,8 +346,8 @@ func (rel *Relation) PrimaryKey() string {
 	return rel.scope.PrimaryKey()
 }
 
-func (rel *Relation) All() *Relation {
-	return rel.Copy()
+func (rel *Relation) All() CollectionResult {
+	return ReturnCollection(rel, nil)
 }
 
 // TODO: move to the Schema type all column-related methods.

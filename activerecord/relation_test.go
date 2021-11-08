@@ -163,11 +163,9 @@ func TestRelation_TransactionalInsert(t *testing.T) {
 
 	require.NoError(t, err)
 
-	authors, err := Author.All().ToA()
-	require.NoError(t, err)
+	authors := Author.All().ToA()
 	require.Len(t, authors, 1)
 
-	book, err := Book.All().ToA()
-	require.NoError(t, err)
+	book := Book.All().ToA()
 	require.Len(t, book, 1)
 }

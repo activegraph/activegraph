@@ -38,7 +38,7 @@ func (o CollectionOption) UnwrapOrDefault() *Relation {
 }
 
 type CollectionResult struct {
-	activesupport.Result
+	result activesupport.Result
 }
 
 func ReturnCollection(rel *Relation, err error) CollectionResult {
@@ -62,8 +62,17 @@ func ErrCollection(err error) CollectionResult {
 	return ReturnCollection(nil, err)
 }
 
+func (r CollectionResult) Expect(msg string) *Relation {
+	return r.result.Expect(msg).(CollectionOption).Unwrap()
+}
+func (r CollectionResult) ExpectErr(msg string) error   { return r.result.ExpectErr(msg) }
+func (r CollectionResult) Result() activesupport.Result { return r.result }
+func (r CollectionResult) String() string               { return r.result.String() }
+func (r CollectionResult) IsErr() bool                  { return r.result.IsErr() }
+func (r CollectionResult) Err() error                   { return r.result.Err() }
+
 func (r CollectionResult) Ok() CollectionOption {
-	return r.Result.Ok().UnwrapOr(NoneCollection).(CollectionOption)
+	return r.result.Ok().UnwrapOr(NoneCollection).(CollectionOption)
 }
 
 func (r CollectionResult) Unwrap() *Relation {
@@ -86,28 +95,6 @@ func (r CollectionResult) Len() int {
 	return 0
 }
 
-// type Result interface {
-// 	activesupport.Result
-//
-// 	UnwrapRecord() *ActiveRecord
-//
-// 	Insert() Result
-// 	Update() Result
-// 	Delete() Result
-//
-// 	// TODO:
-// 	// Upsert() Record
-// 	// Destroy() Record
-//
-// 	AttributeMethods
-// 	// AttributeAccessors
-//
-// 	// AssociationMethods
-// 	// AggregationMethods
-//
-// 	AssociationAccessors
-// 	CollectionAccessors
-// }
 var (
 	// _ AssociationAccessors = Result{}
 	// _ CollectionAccessors  = Result{}
@@ -162,11 +149,23 @@ func Err(err error) Result {
 }
 
 type Result struct {
-	activesupport.Result
+	result activesupport.Result
 }
 
+func (r Result) Result() activesupport.Result { return r.result }
+func (r Result) String() string               { return r.result.String() }
+func (r Result) IsErr() bool                  { return r.result.IsErr() }
+func (r Result) Err() error                   { return r.result.Err() }
+
+func (r Result) UnwrapOr(rec *ActiveRecord) *ActiveRecord {
+	return r.result.UnwrapOr(Some(rec)).(Option).Unwrap()
+}
+
+func (r Result) Expect(msg string) *ActiveRecord { return r.result.Expect(msg).(Option).Unwrap() }
+func (r Result) ExpectErr(msg string) error      { return r.result.ExpectErr(msg) }
+
 func (r Result) Ok() Option {
-	return r.Result.Ok().UnwrapOr(None).(Option)
+	return r.result.Ok().UnwrapOr(None).(Option)
 }
 
 func (r Result) Unwrap() *ActiveRecord {
@@ -185,8 +184,8 @@ func (r Result) Unwrap() *ActiveRecord {
 // }
 
 func (r Result) AndThen(op func(Option) Result) Result {
-	result := r.Result.AndThen(func(val interface{}) activesupport.Result {
-		return op(val.(Option)).Result
+	result := r.result.AndThen(func(val interface{}) activesupport.Result {
+		return op(val.(Option)).result
 	})
 	return Result{result}
 }
