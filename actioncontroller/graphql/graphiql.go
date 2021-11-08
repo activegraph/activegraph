@@ -26,7 +26,7 @@ const indexTemplate = `
     ></script>
     <script
       crossorigin
-      src="https://unpkg.com/graphiql/graphiql.min.js"
+      src="https://unpkg.com/graphiql/graphiql.js"
     ></script>
 
     <script>

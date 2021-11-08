@@ -84,19 +84,41 @@ func introspectFields(fields graphql.FieldList, schema *graphql.Schema) []active
 	return fieldsIntrospection
 }
 
+func introspectInputFields(fields graphql.FieldList, schema *graphql.Schema) []activesupport.Hash {
+	fieldsIntrospection := make([]activesupport.Hash, 0, len(fields))
+	for _, def := range fields {
+		fieldsIntrospection = append(fieldsIntrospection, activesupport.Hash{
+			"name":         def.Name,
+			"description":  def.Description,
+			"type":         MakeType(schema, def.Type).Introspect(),
+			"defaultValue": nil,
+		})
+	}
+
+	return fieldsIntrospection
+}
+
 func introspect(schema *graphql.Schema) activesupport.Hash {
 	typesIntrospection := make([]activesupport.Hash, 0, len(schema.Types))
 	for _, def := range schema.Types {
-		typesIntrospection = append(typesIntrospection, activesupport.Hash{
+		typeIntrospection := activesupport.Hash{
 			"kind":          def.Kind,
 			"name":          def.Name,
 			"description":   def.Description,
-			"fields":        introspectFields(def.Fields, schema),
+			"fields":        nil,
 			"inputFields":   nil,
 			"interfaces":    make([]activesupport.Hash, 0),
 			"enumValues":    nil,
 			"possibleTypes": nil,
-		})
+		}
+
+		if def.Kind == graphql.InputObject {
+			typeIntrospection["inputFields"] = introspectInputFields(def.Fields, schema)
+		} else {
+			typeIntrospection["fields"] = introspectFields(def.Fields, schema)
+		}
+
+		typesIntrospection = append(typesIntrospection, typeIntrospection)
 	}
 
 	schemaIntrospection := activesupport.Hash{

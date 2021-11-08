@@ -17,19 +17,21 @@ func (fn ResultFunc) Execute(ctx *actioncontroller.Context) (interface{}, error)
 	return fn(ctx)
 }
 
-func ContentResult(res activesupport.Result) actioncontroller.Result {
+func Content(content interface{}) actioncontroller.Result {
 	return ResultFunc(func(ctx *actioncontroller.Context) (interface{}, error) {
-		if res.IsErr() {
-			return nil, res.Err()
-		}
-
-		switch val := res.Ok().(type) {
+		switch content := content.(type) {
+		case []activesupport.Hash:
+			return content, nil
 		case activesupport.HashConverter:
-			return val.ToHash(), nil
+			return content.ToHash(), nil
 		case activesupport.HashArrayConverter:
-			return val.ToHashArray(), nil
+			return content.ToHashArray(), nil
+		case error:
+			return nil, content
+		case nil:
+			return nil, nil
 		default:
-			return nil, errors.Errorf("%T does not support hash conversion", val)
+			return nil, errors.Errorf("%T does not support hash conversion", content)
 		}
 	})
 }
@@ -48,13 +50,12 @@ func queryNested(
 
 	switch target.Association.(type) {
 	case activerecord.SingularAssociation:
-		result := rec.AccessAssociation(selection.AttributeName)
-		if result.Ok() == nil {
-			return result.Ok(), result.Err()
+		assoc, err := rec.AccessAssociation(selection.AttributeName)
+		if err != nil {
+			return nil, err
 		}
 
 		// TODO: Slice hash to take only necessary attributes.
-		assoc := result.UnwrapRecord()
 		assocHash := assoc.ToHash()
 		for _, sel := range selection.NestedAttributes {
 			if _, ok := assocHash[sel.AttributeName]; ok {
@@ -69,12 +70,15 @@ func queryNested(
 		}
 		return assocHash, nil
 	case activerecord.CollectionAssociation:
-		collection := rec.AccessCollection(selection.AttributeName)
-		if collection.Ok() == nil {
-			return collection.Ok(), collection.Err()
+		collection, err := rec.AccessCollection(selection.AttributeName)
+		if err != nil {
+			return nil, err
 		}
 
-		assocs := collection.ToA()
+		assocs, err := collection.ToA()
+		if err != nil {
+			return nil, err
+		}
 		result := make([]activesupport.Hash, 0, len(assocs))
 		for _, assoc := range assocs {
 			// TODO: Slice hash to take only necessary attributes.
@@ -99,26 +103,58 @@ func queryNested(
 	}
 }
 
-func GraphResult(ctx *actioncontroller.Context, res activerecord.Result) actioncontroller.Result {
+func Graph(ctx *actioncontroller.Context, res activesupport.Result) actioncontroller.Result {
 	if res.IsErr() {
-		return ContentResult(res)
+		return Content(res.Err())
+	} else if res.Ok().IsNone() {
+		return Content(nil)
 	}
 
-	record := res.UnwrapRecord()
-	recordHash := make(activesupport.Hash)
+	//option := res.Ok().Unwrap()
+	switch option := res.Ok().Unwrap().(type) {
+	case activerecord.Option:
+		record := option.Unwrap()
+		recordHash := make(activesupport.Hash)
 
-	for _, sel := range ctx.Selection {
-		if record.HasAttribute(sel.AttributeName) {
-			recordHash[sel.AttributeName] = record.Attribute(sel.AttributeName)
-			continue
+		for _, sel := range ctx.Selection {
+			if record.HasAttribute(sel.AttributeName) {
+				recordHash[sel.AttributeName] = record.Attribute(sel.AttributeName)
+				continue
+			}
+
+			selectionHash, err := queryNested(record, sel)
+			if err != nil {
+				return Content(err)
+			}
+			recordHash[sel.AttributeName] = selectionHash
 		}
 
-		selectionHash, err := queryNested(record, sel)
+		return Content(recordHash)
+	case activerecord.CollectionOption:
+		records, err := option.Unwrap().ToA()
 		if err != nil {
-			return ContentResult(activesupport.Err(err))
+			return Content(err)
 		}
-		recordHash[sel.AttributeName] = selectionHash
-	}
 
-	return ContentResult(activesupport.Ok(recordHash))
+		result := make([]activesupport.Hash, 0, len(records))
+		for _, record := range records {
+			recordHash := make(activesupport.Hash)
+			for _, sel := range ctx.Selection {
+				if record.HasAttribute(sel.AttributeName) {
+					recordHash[sel.AttributeName] = record.Attribute(sel.AttributeName)
+					continue
+				}
+
+				selectionHash, err := queryNested(record, sel)
+				if err != nil {
+					return Content(err)
+				}
+				recordHash[sel.AttributeName] = selectionHash
+			}
+			result = append(result, recordHash)
+		}
+		return Content(result)
+	default:
+		panic("unsupported result")
+	}
 }

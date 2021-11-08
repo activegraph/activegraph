@@ -51,12 +51,14 @@ type AssociationMethods interface {
 
 type AssociationAccessors interface {
 	// AssignAssociation(assocName string, assoc *ActiveRecord) error
-	AccessAssociation(assocName string) Result
+	Association(assocName string) Result
+	AccessAssociation(assocName string) (*ActiveRecord, error)
 }
 
 type CollectionAccessors interface {
 	// AssignCollection(collName string, coll []*ActiveRecord) error
-	AccessCollection(collName string) CollectionResult
+	Collection(collName string) CollectionResult
+	AccessCollection(collName string) (*Relation, error)
 }
 
 type AssociationReflection struct {
@@ -119,7 +121,7 @@ func (a *BelongsTo) AccessAssociation(owner *ActiveRecord) Result {
 		return Err(err)
 	}
 
-	targetId := owner.AccessAttribute(a.AssociationForeignKey())
+	targetId := owner.Attribute(a.AssociationForeignKey())
 	return targets.WithContext(owner.Context()).Find(targetId)
 }
 
@@ -176,7 +178,7 @@ func (a *HasMany) AccessCollection(owner *ActiveRecord) CollectionResult {
 
 	// TODO: Make "scope" accessable and understandable.
 	targets = targets.Where(a.AssociationForeignKey(), owner.ID())
-	return OkCollection(targets)
+	return OkCollection(SomeCollection(targets))
 }
 
 func (a *HasMany) String() string {
@@ -239,9 +241,9 @@ func (a *HasOne) AccessAssociation(owner *ActiveRecord) Result {
 	}
 	switch len(records) {
 	case 0:
-		return Ok(nil)
+		return Ok(None)
 	case 1:
-		return Ok(records[0])
+		return Ok(Some(records[0]))
 	default:
 		return Err(ErrAssociation{
 			fmt.Sprintf("declared 'has_one' association, but has many: %s", records),
@@ -323,7 +325,6 @@ func (a *associations) get(assocName string) Association {
 
 // ReflectOnAssociation returns AssociationReflection for the specified association.
 func (a *associations) ReflectOnAssociation(assocName string) *AssociationReflection {
-	fmt.Println("ASSOCIATIONS", a.keys)
 	if !a.HasAssociation(assocName) {
 		return nil
 	}
@@ -357,7 +358,7 @@ func (a *associations) AssociationNames() []string {
 	return names
 }
 
-func (a *associations) AccessAssociation(assocName string) Result {
+func (a *associations) Association(assocName string) Result {
 	assoc := a.get(assocName)
 	if assoc == nil {
 		return Err(ErrUnknownAssociation{RecordName: a.rec.Name(), Assoc: assocName})
@@ -371,7 +372,12 @@ func (a *associations) AccessAssociation(assocName string) Result {
 	return sa.AccessAssociation(a.rec)
 }
 
-func (a *associations) AccessCollection(collName string) CollectionResult {
+func (a *associations) AccessAssociation(assocName string) (*ActiveRecord, error) {
+	assoc := a.Association(assocName)
+	return assoc.Ok().UnwrapOrDefault(), assoc.Err()
+}
+
+func (a *associations) Collection(collName string) CollectionResult {
 	assoc := a.get(collName)
 	if assoc == nil {
 		return ErrCollection(ErrUnknownAssociation{RecordName: a.rec.Name(), Assoc: collName})
@@ -383,4 +389,9 @@ func (a *associations) AccessCollection(collName string) CollectionResult {
 		return ErrCollection(ErrAssociation{Message: message})
 	}
 	return ca.AccessCollection(a.rec)
+}
+
+func (a *associations) AccessCollection(collName string) (*Relation, error) {
+	collection := a.Collection(collName)
+	return collection.Ok().UnwrapOrDefault(), collection.Err()
 }

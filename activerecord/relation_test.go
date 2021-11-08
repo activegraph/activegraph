@@ -68,7 +68,7 @@ func TestRelation_New(t *testing.T) {
 	a = a.Insert()
 
 	require.NoError(t, a.Err())
-	require.Equal(t, a.UnwrapRecord().Attribute("name"), "Nassim Taleb")
+	require.Equal(t, a.Unwrap().Attribute("name"), "Nassim Taleb")
 }
 
 func TestRelation_New_WithoutParams(t *testing.T) {
@@ -84,7 +84,7 @@ func TestRelation_New_WithoutParams(t *testing.T) {
 
 	Product := activerecord.New("product")
 
-	p := Product.New().UnwrapRecord()
+	p := Product.New().Unwrap()
 	require.NoError(t, p.AssignAttribute("name", "Holy Grail"))
 }
 
@@ -163,11 +163,9 @@ func TestRelation_TransactionalInsert(t *testing.T) {
 
 	require.NoError(t, err)
 
-	authors, err := Author.All().ToA()
-	require.NoError(t, err)
+	authors := Author.All().ToA()
 	require.Len(t, authors, 1)
 
-	book, err := Book.All().ToA()
-	require.NoError(t, err)
+	book := Book.All().ToA()
 	require.Len(t, book, 1)
 }

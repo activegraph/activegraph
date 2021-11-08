@@ -15,6 +15,14 @@ type join struct {
 	Association Association
 }
 
+type QueryMethods interface {
+	Where(cond string, arg interface{}) *Relation
+	Select(attrs ...string) *Relation
+	Group(attrs ...string) *Relation
+	Joins(assocs ...string) *Relation
+	Limit(num int) *Relation
+}
+
 type QueryBuilder struct {
 	from  string
 	limit *int

@@ -81,20 +81,34 @@ func (s *Schema) AddCreateOp(
 	model *activerecord.Relation, action actioncontroller.Action,
 ) *graphql.FieldDefinition {
 	inputs := action.ActionRequest()
-	args := make(graphql.ArgumentDefinitionList, 0, len(inputs))
+
+	inputName := "Create" + CanonicalModelName(model.Name()) + "Input"
+	inputFields := make(graphql.FieldList, 0, len(inputs))
 
 	for _, input := range inputs {
 		// TODO: add support of objects.
-		args = append(args, &graphql.ArgumentDefinition{
+		inputFields = append(inputFields, &graphql.FieldDefinition{
 			Name: input.AttributeName(),
 			Type: scalarconv(input.AttributeType()),
 		})
 	}
 
+	s.root.Types[inputName] = &graphql.Definition{
+		Kind:       graphql.InputObject,
+		Name:       inputName,
+		Fields:     inputFields,
+		Interfaces: make([]string, 0),
+	}
+
 	def := &graphql.FieldDefinition{
-		Name:      "create" + CanonicalModelName(model.Name()),
-		Arguments: args,
-		Type:      graphql.NamedType(CanonicalModelName(model.Name()), nil),
+		Name: "create" + CanonicalModelName(model.Name()),
+		Arguments: graphql.ArgumentDefinitionList{
+			{
+				Name: model.Name(),
+				Type: &graphql.Type{NonNull: true, Elem: graphql.NamedType(inputName, nil)},
+			},
+		},
+		Type: graphql.NamedType(CanonicalModelName(model.Name()), nil),
 	}
 
 	s.root.Mutation.Fields = append(s.root.Mutation.Fields, def)

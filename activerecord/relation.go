@@ -51,7 +51,10 @@ func (r *R) DefineAttribute(name string, t Type, validators ...AttributeValidato
 func (r *R) Validates(name string, validator AttributeValidator) {
 	if v, ok := validator.(activesupport.Initializer); ok {
 		err := v.Initialize()
-		activesupport.Err(err).Unwrap()
+		if err != nil {
+			panic(err)
+		}
+		// activesupport.Err(err).Unwrap()
 	}
 	r.validators.include(name, validator)
 }
@@ -302,7 +305,7 @@ func (rel *Relation) Initialize(params map[string]interface{}) (*ActiveRecord, e
 		name:         rel.name,
 		tableName:    rel.tableName,
 		conn:         rel.Connection(),
-		attributes:   *attributes,
+		attributes:   attributes,
 		associations: rel.associations.copy(),
 		validations:  *rel.validations.copy(),
 	}
@@ -343,8 +346,8 @@ func (rel *Relation) PrimaryKey() string {
 	return rel.scope.PrimaryKey()
 }
 
-func (rel *Relation) All() *Relation {
-	return rel.Copy()
+func (rel *Relation) All() CollectionResult {
+	return ReturnCollection(rel, nil)
 }
 
 // TODO: move to the Schema type all column-related methods.

@@ -95,21 +95,20 @@ func TestActiveRecord_Insert(t *testing.T) {
 
 	t.Logf("%s %s %s %s", book1, book2, book3, book4)
 
-	author := book1.UnwrapRecord().Association("author")
+	author := book1.Association("author").Unwrap()
 	t.Logf("%s", author)
 
-	authors, err := Author.All().ToA()
-	require.NoError(t, err)
+	authors := Author.All().Expect("Expecting all authors")
 	t.Log(authors)
 
-	bb := author1.UnwrapRecord().Collection("books").ToA()
+	bb := author1.Collection("books").ToA()
 	t.Logf("%#v", bb)
 	require.Len(t, bb, 3)
 
 	// bb, _ = books.Where("year", 1851).ToA()
 	// t.Log(bb)
 
-	books := Book.All().Group("author_id", "year").Select("author_id", "year")
+	books := Book.All().Unwrap().Group("author_id", "year").Select("author_id", "year")
 
 	t.Log(books)
 	bb, err = books.ToA()
@@ -176,6 +175,6 @@ func TestActiveRecord_HasOne_AccessAssociation(t *testing.T) {
 
 	t.Log(accounts)
 
-	account := suppliers[0].Association("account")
+	account := suppliers[0].Association("account").Unwrap()
 	require.Equal(t, accounts[0].ID(), account.ID())
 }
