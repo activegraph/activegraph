@@ -13,6 +13,7 @@ import (
 	graphql "github.com/vektah/gqlparser/v2/ast"
 	grapherror "github.com/vektah/gqlparser/v2/gqlerror"
 	graphparser "github.com/vektah/gqlparser/v2/parser"
+	graphvalidate "github.com/vektah/gqlparser/v2/validator"
 )
 
 func parseURL(values url.Values) (*Request, error) {
@@ -162,6 +163,11 @@ func ParseRequest(r *http.Request, schema *graphql.Schema) (gr *Request, err err
 	if e != nil {
 		fmt.Println("???", grapherror.List{e}.Error())
 		return nil, e
+	}
+
+	errs := graphvalidate.Validate(schema, query)
+	if errs != nil {
+		return nil, errs
 	}
 
 	// Copy the context of the HTTP request.

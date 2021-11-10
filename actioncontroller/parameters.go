@@ -2,20 +2,21 @@ package actioncontroller
 
 import (
 	"github.com/activegraph/activegraph/activerecord"
+	"github.com/activegraph/activegraph/activesupport"
 )
 
-type Parameters map[string]interface{}
+type Parameters activesupport.Hash
 
 func (p Parameters) Get(key string) Parameters {
 	val, ok := p[key]
 	if !ok {
 		return nil
 	}
-	params, ok := val.(map[string]interface{})
+	params, ok := val.(activesupport.Hash)
 	if !ok {
 		return nil
 	}
-	return params
+	return Parameters(params)
 }
 
 type StrongParameters struct {

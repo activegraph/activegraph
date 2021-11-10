@@ -86,9 +86,11 @@ func (r CollectionResult) Unwrap() *Relation {
 // 	return CollectionResult{result}
 // }
 
-func (r CollectionResult) ToA() Array {
-	arr, _ := r.Unwrap().ToA()
-	return arr
+func (r CollectionResult) ToA() (Array, error) {
+	if r.IsErr() {
+		return nil, r.Err()
+	}
+	return r.Unwrap().ToA()
 }
 
 func (r CollectionResult) Len() int {
@@ -370,8 +372,4 @@ func (r *ActiveRecord) Delete() (*ActiveRecord, error) {
 		return nil, err
 	}
 	return r, nil
-}
-
-func (r *ActiveRecord) IsPersisted() bool {
-	return false
 }
