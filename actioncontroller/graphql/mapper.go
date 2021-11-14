@@ -80,7 +80,10 @@ func (s *Schema) AddShowOp(model *activerecord.Relation) *graphql.FieldDefinitio
 func (s *Schema) AddCreateOp(
 	model *activerecord.Relation, action actioncontroller.Action,
 ) *graphql.FieldDefinition {
-	inputs := action.ActionRequest()
+	var inputs []activerecord.Attribute
+	if constraints := action.ActionConstraints(); constraints.Request != nil {
+		inputs = constraints.Request.Attributes
+	}
 
 	inputName := "Create" + CanonicalModelName(model.Name()) + "Input"
 	inputFields := make(graphql.FieldList, 0, len(inputs))
