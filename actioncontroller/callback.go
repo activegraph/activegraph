@@ -34,9 +34,9 @@ func (cb *callbackAround) run(ctx *Context, action Action) Result {
 
 func (cb *callbackAround) chain(action Action) Action {
 	return &NamedAction{
-		Name:       action.ActionName(),
-		Request:    action.ActionRequest(),
-		ActionFunc: func(ctx *Context) Result { return cb.run(ctx, action) },
+		Name:        action.ActionName(),
+		Constraints: action.ActionConstraints(),
+		ActionFunc:  func(ctx *Context) Result { return cb.run(ctx, action) },
 	}
 }
 
@@ -93,8 +93,8 @@ func (cbs *callbacks) runCallbacks(ctx *Context, action Action) (result Result) 
 // TODO: Return `Action` instead of `NamedAction`.
 func (cbs *callbacks) override(action Action) *NamedAction {
 	return &NamedAction{
-		Name:       action.ActionName(),
-		Request:    action.ActionRequest(),
-		ActionFunc: func(ctx *Context) Result { return cbs.runCallbacks(ctx, action) },
+		Name:        action.ActionName(),
+		Constraints: action.ActionConstraints(),
+		ActionFunc:  func(ctx *Context) Result { return cbs.runCallbacks(ctx, action) },
 	}
 }

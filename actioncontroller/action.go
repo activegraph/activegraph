@@ -2,8 +2,6 @@ package actioncontroller
 
 import (
 	"context"
-
-	"github.com/activegraph/activegraph/activerecord"
 )
 
 type QueryAttribute struct {
@@ -33,7 +31,7 @@ type Result interface {
 
 type Action interface {
 	ActionName() string
-	ActionRequest() []activerecord.Attribute
+	ActionConstraints() Constraints
 	Process(ctx *Context) Result
 }
 
@@ -44,13 +42,13 @@ func (fn ActionFunc) Process(ctx *Context) Result {
 }
 
 type NamedAction struct {
-	Name    string
-	Request []activerecord.Attribute
+	Name        string
+	Constraints Constraints
 	ActionFunc
 }
 
-func (a *NamedAction) ActionRequest() []activerecord.Attribute {
-	return a.Request
+func (a *NamedAction) ActionConstraints() Constraints {
+	return a.Constraints
 }
 
 func (a *NamedAction) ActionName() string {

@@ -145,7 +145,7 @@ func Initialize(init func(*C)) (*ActionController, error) {
 	init(&c)
 
 	for actionName, action := range c.actions {
-		action.Request = c.params[actionName]
+		action.Constraints = Constraints{Request: &StrongParameters{c.params[actionName]}}
 		action = c.callbacks.override(action)
 		c.actions[actionName] = action
 	}
