@@ -1,9 +1,6 @@
 package actionview
 
 import (
-	"fmt"
-	"strings"
-
 	"github.com/activegraph/activegraph/actioncontroller"
 	"github.com/activegraph/activegraph/activerecord"
 	"github.com/activegraph/activegraph/activesupport"
@@ -17,7 +14,13 @@ func (fn ResultFunc) Execute(ctx *actioncontroller.Context) (interface{}, error)
 	return fn(ctx)
 }
 
-func Content(content interface{}) actioncontroller.Result {
+func Error(err error) actioncontroller.Result {
+	return ResultFunc(func(ctx *actioncontroller.Context) (interface{}, error) {
+		return nil, err
+	})
+}
+
+func content(content interface{}) actioncontroller.Result {
 	return ResultFunc(func(ctx *actioncontroller.Context) (interface{}, error) {
 		switch content := content.(type) {
 		case []activesupport.Hash:
@@ -26,8 +29,6 @@ func Content(content interface{}) actioncontroller.Result {
 			return content.ToHash(), nil
 		case activesupport.HashArrayConverter:
 			return content.ToHashArray(), nil
-		case error:
-			return nil, content
 		case nil:
 			return nil, nil
 		default:
@@ -36,125 +37,127 @@ func Content(content interface{}) actioncontroller.Result {
 	})
 }
 
-func queryNested(
+func traverse(
 	rec *activerecord.ActiveRecord,
 	selection actioncontroller.QueryAttribute,
-) (interface{}, error) {
+) (activesupport.Hash, error) {
+	recHash := rec.ToHash()
+	recHash = recHash.Slice(selection.NestedAttributeNames()...)
 
-	target := rec.ReflectOnAssociation(selection.AttributeName)
-	fmt.Println("!!!", rec, strings.TrimSuffix(selection.AttributeName, "s"))
-	fmt.Printf("\tnested: %s / %v || %v\n", rec, selection, target)
-	if target == nil {
-		return nil, nil
-	}
-
-	switch target.Association.(type) {
-	case activerecord.SingularAssociation:
-		assoc, err := rec.AccessAssociation(selection.AttributeName)
-		if err != nil {
-			return nil, err
+	for _, sel := range selection.NestedAttributes {
+		if _, ok := recHash[sel.AttributeName]; ok {
+			continue
 		}
 
-		// TODO: Slice hash to take only necessary attributes.
-		assocHash := assoc.ToHash()
-		for _, sel := range selection.NestedAttributes {
-			if _, ok := assocHash[sel.AttributeName]; ok {
-				continue
-			}
+		target := rec.ReflectOnAssociation(sel.AttributeName)
+		if target == nil {
+			continue
+		}
 
-			selectionHash, err := queryNested(assoc, sel)
+		switch target.Association.(type) {
+		case activerecord.SingularAssociation:
+			association, err := rec.AccessAssociation(sel.AttributeName)
 			if err != nil {
 				return nil, err
 			}
-			assocHash[sel.AttributeName] = selectionHash
-		}
-		return assocHash, nil
-	case activerecord.CollectionAssociation:
-		collection, err := rec.AccessCollection(selection.AttributeName)
-		if err != nil {
-			return nil, err
-		}
 
-		assocs, err := collection.ToA()
-		if err != nil {
-			return nil, err
-		}
-		result := make([]activesupport.Hash, 0, len(assocs))
-		for _, assoc := range assocs {
-			// TODO: Slice hash to take only necessary attributes.
-			assocHash := assoc.ToHash()
-			for _, sel := range selection.NestedAttributes {
-				if _, ok := assocHash[sel.AttributeName]; ok {
-					continue
-				}
-
-				selectionHash, err := queryNested(assoc, sel)
-				if err != nil {
-					return nil, err
-				}
-				assocHash[sel.AttributeName] = selectionHash
+			nestedHash, err := traverse(association, sel)
+			if err != nil {
+				return nil, err
 			}
-			result = append(result, assocHash)
+			recHash[sel.AttributeName] = nestedHash
+		case activerecord.CollectionAssociation:
+			collection, err := rec.AccessCollection(sel.AttributeName)
+			if err != nil {
+				return nil, err
+			}
+			associations, err := collection.ToA()
+			if err != nil {
+				return nil, err
+			}
+
+			nestedHash, err := traverseCollection(associations, sel)
+			if err != nil {
+				return nil, err
+			}
+
+			recHash[sel.AttributeName] = nestedHash
+		default:
+			panic("unknown target association")
 		}
-		return result, nil
-	default:
-		// TODO: replace with an error.
-		panic("unknown target association")
 	}
+
+	return recHash, nil
 }
 
-func Graph(ctx *actioncontroller.Context, res activesupport.Result) actioncontroller.Result {
-	if res.IsErr() {
-		return Content(res.Err())
-	} else if res.Ok().IsNone() {
-		return Content(nil)
-	}
+func traverseCollection(
+	collection []*activerecord.ActiveRecord,
+	selection actioncontroller.QueryAttribute,
+) ([]activesupport.Hash, error) {
+	collectionHash := make([]activesupport.Hash, 0, len(collection))
 
-	//option := res.Ok().Unwrap()
-	switch option := res.Ok().Unwrap().(type) {
-	case activerecord.Option:
-		record := option.Unwrap()
-		recordHash := make(activesupport.Hash)
-
-		for _, sel := range ctx.Selection {
-			if record.HasAttribute(sel.AttributeName) {
-				recordHash[sel.AttributeName] = record.Attribute(sel.AttributeName)
-				continue
-			}
-
-			selectionHash, err := queryNested(record, sel)
-			if err != nil {
-				return Content(err)
-			}
-			recordHash[sel.AttributeName] = selectionHash
-		}
-
-		return Content(recordHash)
-	case activerecord.CollectionOption:
-		records, err := option.Unwrap().ToA()
+	for _, rec := range collection {
+		recHash, err := traverse(rec, selection)
 		if err != nil {
-			return Content(err)
+			return nil, err
 		}
-
-		result := make([]activesupport.Hash, 0, len(records))
-		for _, record := range records {
-			recordHash := make(activesupport.Hash)
-			for _, sel := range ctx.Selection {
-				if record.HasAttribute(sel.AttributeName) {
-					recordHash[sel.AttributeName] = record.Attribute(sel.AttributeName)
-					continue
-				}
-
-				selectionHash, err := queryNested(record, sel)
-				if err != nil {
-					return Content(err)
-				}
-				recordHash[sel.AttributeName] = selectionHash
-			}
-			result = append(result, recordHash)
-		}
-		return Content(result)
-	default:
-		panic("unsupported result")
+		collectionHash = append(collectionHash, recHash)
 	}
+	return collectionHash, nil
+}
+
+// NestedView returns a result with activesupport.Hash type.
+//
+// Method queries all nested attributes specified in ctx.Selection. That means
+// additionall queries to a database are implied.
+func NestedView(
+	ctx *actioncontroller.Context, record activerecord.Result,
+) actioncontroller.Result {
+	if record.IsErr() {
+		return Error(record.Err())
+	}
+	if record.Ok().IsNone() {
+		return content(nil)
+	}
+
+	result, err := traverse(
+		record.Unwrap(), actioncontroller.QueryAttribute{
+			NestedAttributes: ctx.Selection,
+		},
+	)
+	if err != nil {
+		Error(err)
+	}
+	return content(result)
+}
+
+// NestedCollectionView returns a colleciton as a slice of activesupport.Hash.
+// Values of the record attributes are fetched as is, without conversion.
+//
+// In case of collection with error an error result is returned.
+func NestedCollectionView(
+	ctx *actioncontroller.Context,
+	collection activerecord.CollectionResult,
+) actioncontroller.Result {
+	if collection.IsErr() {
+		return Error(collection.Err())
+	}
+	if collection.Ok().IsNone() {
+		return content(nil)
+	}
+
+	records, err := collection.Unwrap().ToA()
+	if err != nil {
+		return Error(err)
+	}
+
+	result, err := traverseCollection(
+		records, actioncontroller.QueryAttribute{
+			NestedAttributes: ctx.Selection,
+		},
+	)
+	if err != nil {
+		return Error(err)
+	}
+	return content(result)
 }
