@@ -264,6 +264,8 @@ func (m *Mapper) Map() (http.Handler, error) {
 	schema.Types["Mutation"] = schema.Mutation
 
 	schema.Types["Int"] = Int
+	schema.Types["Float"] = Float
+	schema.Types["Boolean"] = Boolean
 	schema.Types["String"] = String
 	schema.Types["DateTime"] = DateTime
 

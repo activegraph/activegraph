@@ -118,9 +118,9 @@ func (*Boolean) Serialize(value interface{}) (interface{}, error) {
 }
 
 const (
-	iso8601     = "2006-01-02 15:04:05.000000 MST"
+	iso8601     = time.RFC3339Nano
 	iso8601Date = "2006-01-02"
-	iso8601Time = "15:04.05.000000 MST"
+	iso8601Time = "15:04.05.999999999Z07:00"
 )
 
 func parseTime(layout string, value interface{}) (interface{}, error) {

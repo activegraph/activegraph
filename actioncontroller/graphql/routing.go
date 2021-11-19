@@ -1,15 +1,10 @@
 package graphql
 
 import (
-	"fmt"
-	"strconv"
-	"time"
-
 	"github.com/davecgh/go-spew/spew"
 	graphql "github.com/vektah/gqlparser/v2/ast"
 
 	"github.com/activegraph/activegraph/actioncontroller"
-	"github.com/activegraph/activegraph/activesupport"
 )
 
 type RoutingTable struct {
@@ -53,50 +48,6 @@ func queryconv(selections graphql.SelectionSet) []actioncontroller.QueryAttribut
 	return attrs
 }
 
-func unmarshalArg(v *graphql.Value) (interface{}, error) {
-	if v == nil {
-		return nil, nil
-	}
-	switch v.Kind {
-	case graphql.IntValue:
-		return strconv.ParseInt(v.Raw, 10, 64)
-	case graphql.FloatValue:
-		return strconv.ParseFloat(v.Raw, 64)
-	case graphql.StringValue, graphql.BlockValue, graphql.EnumValue:
-		// TODO: Implement a normal solution, not this.
-		if v.ExpectedType.Name() == "DateTime" {
-			return time.Parse("2006-01-02 15:04:05.000000 MST", v.Raw)
-		}
-		return v.Raw, nil
-	case graphql.BooleanValue:
-		return strconv.ParseBool(v.Raw)
-	case graphql.NullValue:
-		return nil, nil
-	case graphql.ListValue:
-		var val []interface{}
-		for _, elem := range v.Children {
-			elemVal, err := unmarshalArg(elem.Value)
-			if err != nil {
-				return val, err
-			}
-			val = append(val, elemVal)
-		}
-		return val, nil
-	case graphql.ObjectValue:
-		val := activesupport.Hash{}
-		for _, elem := range v.Children {
-			elemVal, err := unmarshalArg(elem.Value)
-			if err != nil {
-				return val, err
-			}
-			val[elem.Name] = elemVal
-		}
-		return val, nil
-	default:
-		panic(fmt.Errorf("unknown value kind %d", v.Kind))
-	}
-}
-
 func (rt *RoutingTable) Dispatch(r *Request, field *graphql.Field) (
 	interface{}, error,
 ) {
@@ -108,8 +59,7 @@ func (rt *RoutingTable) Dispatch(r *Request, field *graphql.Field) (
 	// TODO: use StrongParameters to parse the arguments of a query?
 	params := make(actioncontroller.Parameters, len(field.Arguments))
 	for _, arg := range field.Arguments {
-		// TODO: unmarshal the specified types.
-		value, err := unmarshalArg(arg.Value)
+		value, err := DefaultDecoder.Decode(arg.Value)
 		if err != nil {
 			return nil, err
 		}
