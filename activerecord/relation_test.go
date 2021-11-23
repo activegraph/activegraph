@@ -153,12 +153,13 @@ func TestRelation_TransactionalInsert(t *testing.T) {
 	})
 
 	err = activerecord.Transaction(context.TODO(), func() error {
-		_, err := Author.Create(Hash{"name": "Max Tegmark"})
-		if err != nil {
-			return err
-		}
-		_, err = Book.Create(Hash{"title": "Life 3.0", "year": 2017, "author_id": 1})
-		return err
+		author := Author.Create(Hash{"name": "Max Tegmark"})
+
+		book := author.AndThen(func(activerecord.Option) activerecord.Result {
+			return Book.Create(Hash{"title": "Life 3.0", "year": 2017, "author_id": 1})
+		})
+
+		return book.Err()
 	})
 
 	require.NoError(t, err)

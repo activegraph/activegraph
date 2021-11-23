@@ -235,7 +235,7 @@ func (a *HasOne) AccessAssociation(owner *ActiveRecord) Result {
 	targets = targets.WithContext(owner.Context())
 	targets = targets.Where(a.AssociationForeignKey(), owner.ID())
 
-	records, err := targets.ToA()
+	records, err := targets.Limit(2).ToA()
 	if err != nil {
 		return Err(err)
 	}

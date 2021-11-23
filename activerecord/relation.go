@@ -312,12 +312,8 @@ func (rel *Relation) Initialize(params map[string]interface{}) (*ActiveRecord, e
 	return rec.init(), nil
 }
 
-func (rel *Relation) Create(params map[string]interface{}) (*ActiveRecord, error) {
-	rec, err := rel.Initialize(params)
-	if err != nil {
-		return nil, err
-	}
-	return rec.Insert()
+func (rel *Relation) Create(params map[string]interface{}) Result {
+	return Return(rel.Initialize(params)).Insert()
 }
 
 func (rel *Relation) ExtractRecord(h activesupport.Hash) (*ActiveRecord, error) {
@@ -499,6 +495,31 @@ func (rel *Relation) Find(id interface{}) Result {
 		return Err(ErrRecordNotFound{PrimaryKey: rel.PrimaryKey(), ID: id})
 	}
 	return rel.New(rows[0])
+}
+
+// FindBy returns a record matching the specified condition.
+//
+//	person := Person.FindBy("name", "Bill")
+//	// Ok(Some(#<Person id: 1, name: "Bill", occupation: "retired">))
+//
+//	person := Person.FindBy("salary > ?", 10000)
+//	// Ok(Some(#<Person id: 3, name: "Jeff", occupation: "CEO">))
+func (rel *Relation) FindBy(cond string, arg interface{}) Result {
+	return rel.Where(cond, arg).First()
+}
+
+// First find returns the first record.
+func (rel *Relation) First() Result {
+	records, err := rel.Limit(1).ToA()
+	if err != nil {
+		return Err(err)
+	}
+	switch len(records) {
+	case 0:
+		return Ok(None)
+	default:
+		return Ok(Some(records[0]))
+	}
 }
 
 func (rel *Relation) InsertAll(params ...map[string]interface{}) (
