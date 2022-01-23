@@ -4,8 +4,6 @@ import (
 	"fmt"
 	"sort"
 
-	"github.com/pkg/errors"
-
 	"github.com/activegraph/activegraph/activesupport"
 )
 
@@ -134,7 +132,7 @@ func newAttributes(recordName string, attrs attributesMap, values activesupport.
 		// easier access to it.
 		if pk, ok := attr.(primaryKey); ok && pk.PrimaryKey() {
 			if recordAttrs.primaryKey != nil {
-				return nil, errors.New("multiple primary keys are not supported")
+				return nil, fmt.Errorf("multiple primary keys are not supported")
 			}
 			recordAttrs.primaryKey = attr
 		}
@@ -144,7 +142,7 @@ func newAttributes(recordName string, attrs attributesMap, values activesupport.
 	// a new "id" integer attribute, ensure that the attribute with the same
 	// name is not presented in the schema definition.
 	if _, dup := recordAttrs.keys[defaultPrimaryKeyName]; dup && recordAttrs.primaryKey == nil {
-		err := errors.Errorf("%q is an attribute, but not a primary key", defaultPrimaryKeyName)
+		err := fmt.Errorf("%q is an attribute, but not a primary key", defaultPrimaryKeyName)
 		return nil, err
 	}
 	if recordAttrs.primaryKey == nil {

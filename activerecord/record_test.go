@@ -9,9 +9,8 @@ import (
 
 	"github.com/activegraph/activegraph/activerecord"
 	_ "github.com/activegraph/activegraph/activerecord/sqlite3"
+	. "github.com/activegraph/activegraph/activesupport"
 )
-
-type Hash map[string]interface{}
 
 func TestActiveRecord_Insert(t *testing.T) {
 	conn, err := activerecord.EstablishConnection(activerecord.DatabaseConfig{

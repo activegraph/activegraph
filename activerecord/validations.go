@@ -5,7 +5,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/activegraph/activegraph/activesupport"
+	. "github.com/activegraph/activegraph/activesupport"
 )
 
 type ErrValidation struct {
@@ -132,7 +132,7 @@ func (v *validations) validate(rec *ActiveRecord) error {
 
 		for _, validator := range validators {
 			if (value == nil && validator.AllowsNil()) ||
-				(activesupport.IsBlank(value) && validator.AllowsBlank()) {
+				(IsBlank(value) && validator.AllowsBlank()) {
 				continue
 			}
 			err := validator.ValidateAttribute(rec, attrName, value)
@@ -190,8 +190,8 @@ func (p *Presence) AllowsBlank() bool { return false }
 
 // ValidateAttribute returns ErrInvalidValue when specified value is blank.
 func (p *Presence) ValidateAttribute(r *ActiveRecord, attrName string, val interface{}) error {
-	if activesupport.IsBlank(val) {
-		message := activesupport.Strings(p.Message, "can't be blank").Find(activesupport.String.IsNotEmpty)
+	if IsBlank(val) {
+		message := Strings(p.Message, "can't be blank").Find(Str.IsNotEmpty)
 		return ErrInvalidValue{AttrName: attrName, Value: val, Message: string(message)}
 	}
 	return nil
@@ -216,8 +216,8 @@ func (p *Presence) ValidateAttribute(r *ActiveRecord, attrName string, val inter
 // You must pass either `With` or `Without` as parameters. When both are empty strings
 // or both expressions are specified, an error ErrArgument is returned.
 type Format struct {
-	With    activesupport.String
-	Without activesupport.String
+	With    Str
+	Without Str
 
 	AllowNil   bool
 	AllowBlank bool
@@ -239,7 +239,7 @@ func (f *Format) AllowsBlank() bool { return f.AllowBlank }
 // method returns an error.
 func (f *Format) Initialize() (err error) {
 	if (f.With.IsEmpty() && f.Without.IsEmpty()) || (!f.With.IsEmpty() && !f.Without.IsEmpty()) {
-		return activesupport.ErrArgument{
+		return ErrArgument{
 			Message: "format: either 'With' or 'Without' must be supplied (but not both)",
 		}
 	}
@@ -265,7 +265,7 @@ func (f *Format) ValidateAttribute(r *ActiveRecord, attrName string, val interfa
 
 	match := f.re.Match([]byte(s))
 	if (match && !f.Without.IsEmpty()) || (!match && f.Without.IsEmpty()) {
-		message := activesupport.Strings(f.Message, "has invalid format").Find(activesupport.String.IsNotEmpty)
+		message := Strings(f.Message, "has invalid format").Find(Str.IsNotEmpty)
 		return ErrInvalidValue{AttrName: attrName, Value: val, Message: string(message)}
 	}
 	return nil
@@ -274,10 +274,10 @@ func (f *Format) ValidateAttribute(r *ActiveRecord, attrName string, val interfa
 // Inclusion validates that the specified value of the attribute is available in a slice.
 //
 //	Supplier := activerecord.New("supplier", func(r *activerecord.R) {
-//		r.Validates("state", &activerecord.Inclusion{In: activesupport.Strings("NY", "MA")})
+//		r.Validates("state", &activerecord.Inclusion{In: Strings("NY", "MA")})
 //	})
 type Inclusion struct {
-	In activesupport.Slice
+	In Slice
 
 	AllowNil   bool
 	AllowBlank bool
@@ -303,10 +303,10 @@ func (i *Inclusion) ValidateAttribute(r *ActiveRecord, attrName string, val inte
 // Exclusion validates that specified value of the attribute is not in a slice.
 //
 //	Supplier := activerecord.New("supplier", func(r *activerecord.R) {
-//		r.Validates("password", &activerecord.Exclusion{From: activesupport.Strings("12345678")})
+//		r.Validates("password", &activerecord.Exclusion{From: Strings("12345678")})
 //	})
 type Exclusion struct {
-	From activesupport.Slice
+	From Slice
 
 	AllowNil   bool
 	AllowBlank bool
@@ -357,12 +357,12 @@ func (l *Length) AllowsBlank() bool { return l.AllowBlank }
 // method returns ErrArgument error.
 func (l *Length) Initialize() error {
 	if l.Maximum < l.Minimum {
-		return activesupport.ErrArgument{
+		return ErrArgument{
 			Message: "length: maximum can't be less than minimum",
 		}
 	}
 	if l.Minimum < 0 {
-		return activesupport.ErrArgument{
+		return ErrArgument{
 			Message: "length: minimum can't be less than 0",
 		}
 	}

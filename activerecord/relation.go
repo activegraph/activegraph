@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/activegraph/activegraph/activesupport"
+	. "github.com/activegraph/activegraph/activesupport"
 )
 
 type ErrUnknownPrimaryKey struct {
@@ -49,12 +49,12 @@ func (r *R) DefineAttribute(name string, t Type, validators ...AttributeValidato
 }
 
 func (r *R) Validates(name string, validator AttributeValidator) {
-	if v, ok := validator.(activesupport.Initializer); ok {
+	if v, ok := validator.(Initializer); ok {
 		err := v.Initialize()
 		if err != nil {
 			panic(err)
 		}
-		// activesupport.Err(err).Unwrap()
+		// Err(err).Unwrap()
 	}
 	r.validators.include(name, validator)
 }
@@ -71,7 +71,7 @@ func (r *R) BelongsTo(name string, init ...func(*BelongsTo)) {
 	case 1:
 		init[0](&assoc)
 	default:
-		panic(activesupport.ErrMultipleVariadicArguments{Name: "init"})
+		panic(ErrMultipleVariadicArguments{Name: "init"})
 	}
 
 	r.attrs[assoc.AssociationForeignKey()] = attr{
@@ -151,7 +151,7 @@ func New(name string, init ...func(*R)) *Relation {
 	case 1:
 		rel, err = Initialize(name, init[0])
 	default:
-		panic(&activesupport.ErrMultipleVariadicArguments{Name: "init"})
+		panic(&ErrMultipleVariadicArguments{Name: "init"})
 	}
 
 	if err != nil {
@@ -283,14 +283,14 @@ func (rel *Relation) Connection() Conn {
 	return conn
 }
 
-func (rel *Relation) New(params ...map[string]interface{}) Result {
+func (rel *Relation) New(params ...map[string]interface{}) RecordResult {
 	switch len(params) {
 	case 0:
-		return Return(rel.Initialize(nil))
+		return ReturnRecord(rel.Initialize(nil))
 	case 1:
-		return Return(rel.Initialize(params[0]))
+		return ReturnRecord(rel.Initialize(params[0]))
 	default:
-		return Err(&activesupport.ErrMultipleVariadicArguments{Name: "params"})
+		return ErrRecord(&ErrMultipleVariadicArguments{Name: "params"})
 	}
 }
 
@@ -312,17 +312,17 @@ func (rel *Relation) Initialize(params map[string]interface{}) (*ActiveRecord, e
 	return rec.init(), nil
 }
 
-func (rel *Relation) Create(params map[string]interface{}) Result {
-	return Return(rel.Initialize(params)).Insert()
+func (rel *Relation) Create(params map[string]interface{}) RecordResult {
+	return ReturnRecord(rel.Initialize(params)).Insert()
 }
 
-func (rel *Relation) ExtractRecord(h activesupport.Hash) (*ActiveRecord, error) {
+func (rel *Relation) ExtractRecord(h Hash) (*ActiveRecord, error) {
 	var (
 		attrNames   = rel.scope.AttributeNames()
 		columnNames = rel.scope.ColumnNames()
 	)
 
-	params := make(activesupport.Hash, len(attrNames))
+	params := make(Hash, len(attrNames))
 	for i, colName := range columnNames {
 		attrName := attrNames[i]
 		attr := rel.scope.AttributeForInspect(attrName)
@@ -343,7 +343,7 @@ func (rel *Relation) PrimaryKey() string {
 }
 
 func (rel *Relation) All() CollectionResult {
-	return ReturnCollection(rel, nil)
+	return OkCollection(rel)
 }
 
 // TODO: move to the Schema type all column-related methods.
@@ -363,7 +363,7 @@ func (rel *Relation) Each(fn func(*ActiveRecord) error) error {
 
 	var lasterr error
 
-	err := rel.Connection().ExecQuery(rel.Context(), q.Operation(), func(h activesupport.Hash) bool {
+	err := rel.Connection().ExecQuery(rel.Context(), q.Operation(), func(h Hash) bool {
 		rec, e := rel.ExtractRecord(h)
 		if lasterr = e; e != nil {
 			return false
@@ -475,24 +475,24 @@ func (rel *Relation) Joins(assocNames ...string) *Relation {
 	return newrel
 }
 
-func (rel *Relation) Find(id interface{}) Result {
+func (rel *Relation) Find(id interface{}) RecordResult {
 	var q QueryBuilder
 	q.From(rel.TableName())
 	q.Select(rel.scope.AttributeNames()...)
 	// TODO: consider using unified approach.
 	q.Where(fmt.Sprintf("%s = ?", rel.PrimaryKey()), id)
 
-	var rows []activesupport.Hash
+	var rows []Hash
 
-	if err := rel.Connection().ExecQuery(rel.Context(), q.Operation(), func(h activesupport.Hash) bool {
+	if err := rel.Connection().ExecQuery(rel.Context(), q.Operation(), func(h Hash) bool {
 		rows = append(rows, h)
 		return true
 	}); err != nil {
-		return Err(err)
+		return ErrRecord(err)
 	}
 
 	if len(rows) != 1 {
-		return Err(ErrRecordNotFound{PrimaryKey: rel.PrimaryKey(), ID: id})
+		return ErrRecord(&ErrRecordNotFound{PrimaryKey: rel.PrimaryKey(), ID: id})
 	}
 	return rel.New(rows[0])
 }
@@ -504,21 +504,21 @@ func (rel *Relation) Find(id interface{}) Result {
 //
 //	person := Person.FindBy("salary > ?", 10000)
 //	// Ok(Some(#<Person id: 3, name: "Jeff", occupation: "CEO">))
-func (rel *Relation) FindBy(cond string, arg interface{}) Result {
+func (rel *Relation) FindBy(cond string, arg interface{}) Result[*ActiveRecord] {
 	return rel.Where(cond, arg).First()
 }
 
 // First find returns the first record.
-func (rel *Relation) First() Result {
+func (rel *Relation) First() RecordResult {
 	records, err := rel.Limit(1).ToA()
 	if err != nil {
-		return Err(err)
+		return ErrRecord(err)
 	}
 	switch len(records) {
 	case 0:
-		return Ok(None)
+		return OkRecord(nil)
 	default:
-		return Ok(Some(records[0]))
+		return OkRecord(records[0])
 	}
 }
 

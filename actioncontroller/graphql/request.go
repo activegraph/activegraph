@@ -9,7 +9,6 @@ import (
 	"net/http"
 	"net/url"
 
-	"github.com/pkg/errors"
 	graphql "github.com/vektah/gqlparser/v2/ast"
 	grapherror "github.com/vektah/gqlparser/v2/gqlerror"
 	graphparser "github.com/vektah/gqlparser/v2/parser"
@@ -19,7 +18,7 @@ import (
 func parseURL(values url.Values) (*Request, error) {
 	query := values.Get("query")
 	if query == "" {
-		return nil, errors.New("request is missing mandatory 'query' URL parameter")
+		return nil, fmt.Errorf("request is missing mandatory 'query' URL parameter")
 	}
 
 	var (
@@ -121,7 +120,7 @@ func parsePost(r *http.Request) (gr *Request, err error) {
 	// For server requests body is always non-nil, but client request
 	// can be passed here as well.
 	if r.Body == nil {
-		return nil, errors.Errorf("empty body for %s request", http.MethodPost)
+		return nil, fmt.Errorf("empty body for %s request", http.MethodPost)
 	}
 
 	contentType, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
@@ -156,7 +155,7 @@ func ParseRequest(r *http.Request, schema *graphql.Schema) (gr *Request, err err
 	case http.MethodPost:
 		gr, err = parsePost(r)
 	default:
-		return gr, errors.Errorf("%s or %s verb is expected", http.MethodPost, http.MethodGet)
+		return gr, fmt.Errorf("%s or %s verb is expected", http.MethodPost, http.MethodGet)
 	}
 
 	query, e := graphparser.ParseQuery(&graphql.Source{Input: gr.Query})

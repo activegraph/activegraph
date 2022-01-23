@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+
+	. "github.com/activegraph/activegraph/activesupport"
 )
 
 type ErrAssociation struct {
@@ -31,7 +33,7 @@ type Association interface {
 
 type SingularAssociation interface {
 	Association
-	AccessAssociation(owner *ActiveRecord) Result
+	AccessAssociation(owner *ActiveRecord) RecordResult
 }
 
 type CollectionAssociation interface {
@@ -51,7 +53,7 @@ type AssociationMethods interface {
 
 type AssociationAccessors interface {
 	// AssignAssociation(assocName string, assoc *ActiveRecord) error
-	Association(assocName string) Result
+	Association(assocName string) RecordResult
 	AccessAssociation(assocName string) (*ActiveRecord, error)
 }
 
@@ -114,11 +116,11 @@ func (a *BelongsTo) AssociationForeignKey() string {
 // 	| updated_at | timestamp |        +------+---------+
 //	+------------+-----------+
 //
-func (a *BelongsTo) AccessAssociation(owner *ActiveRecord) Result {
+func (a *BelongsTo) AccessAssociation(owner *ActiveRecord) RecordResult {
 	// Find target association relation given it's name.
 	targets, err := a.reflection.Reflection(a.targetName)
 	if err != nil {
-		return Err(err)
+		return ErrRecord(err)
 	}
 
 	targetId := owner.Attribute(a.AssociationForeignKey())
@@ -171,14 +173,14 @@ func (a *HasMany) AssociationForeignKey() string {
 func (a *HasMany) AccessCollection(owner *ActiveRecord) CollectionResult {
 	targets, err := a.reflection.Reflection(a.targetName)
 	if err != nil {
-		return ErrCollection(err)
+		return CollectionResult{Err[*Relation](err)}
 	}
 
 	targets = targets.WithContext(owner.Context())
 
 	// TODO: Make "scope" accessable and understandable.
 	targets = targets.Where(a.AssociationForeignKey(), owner.ID())
-	return OkCollection(SomeCollection(targets))
+	return CollectionResult{Ok(targets)}
 }
 
 func (a *HasMany) String() string {
@@ -225,11 +227,11 @@ func (a *HasOne) AssociationForeignKey() string {
 //	+------+---------+         | name     | string  |
 //	                           +----------+---------+
 //
-func (a *HasOne) AccessAssociation(owner *ActiveRecord) Result {
+func (a *HasOne) AccessAssociation(owner *ActiveRecord) RecordResult {
 	// Find target association relation given it's name.
 	targets, err := a.reflection.Reflection(a.targetName)
 	if err != nil {
-		return Err(err)
+		return ErrRecord(err)
 	}
 
 	targets = targets.WithContext(owner.Context())
@@ -237,15 +239,15 @@ func (a *HasOne) AccessAssociation(owner *ActiveRecord) Result {
 
 	records, err := targets.Limit(2).ToA()
 	if err != nil {
-		return Err(err)
+		return ErrRecord(err)
 	}
 	switch len(records) {
 	case 0:
-		return Ok(None)
+		return OkRecord(nil)
 	case 1:
-		return Ok(Some(records[0]))
+		return OkRecord(records[0])
 	default:
-		return Err(ErrAssociation{
+		return ErrRecord(ErrAssociation{
 			fmt.Sprintf("declared 'has_one' association, but has many: %s", records),
 		})
 	}
@@ -358,23 +360,23 @@ func (a *associations) AssociationNames() []string {
 	return names
 }
 
-func (a *associations) Association(assocName string) Result {
+func (a *associations) Association(assocName string) RecordResult {
 	assoc := a.get(assocName)
 	if assoc == nil {
-		return Err(ErrUnknownAssociation{RecordName: a.rec.Name(), Assoc: assocName})
+		return ErrRecord(ErrUnknownAssociation{RecordName: a.rec.Name(), Assoc: assocName})
 	}
 
 	sa, ok := assoc.(SingularAssociation)
 	if !ok {
 		message := fmt.Sprintf("'%s' is not a singular association", assocName)
-		return Err(ErrAssociation{Message: message})
+		return ErrRecord(ErrAssociation{Message: message})
 	}
 	return sa.AccessAssociation(a.rec)
 }
 
 func (a *associations) AccessAssociation(assocName string) (*ActiveRecord, error) {
 	assoc := a.Association(assocName)
-	return assoc.Ok().UnwrapOrDefault(), assoc.Err()
+	return assoc.Ok().UnwrapOr(nil), assoc.Err()
 }
 
 func (a *associations) Collection(collName string) CollectionResult {
@@ -388,10 +390,10 @@ func (a *associations) Collection(collName string) CollectionResult {
 		message := fmt.Sprintf("'%s' is not a collection association", collName)
 		return ErrCollection(ErrAssociation{Message: message})
 	}
-	return ca.AccessCollection(a.rec)
+	return CollectionResult{ca.AccessCollection(a.rec)}
 }
 
 func (a *associations) AccessCollection(collName string) (*Relation, error) {
 	collection := a.Collection(collName)
-	return collection.Ok().UnwrapOrDefault(), collection.Err()
+	return collection.Ok().UnwrapOr(nil), collection.Err()
 }

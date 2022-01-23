@@ -1,7 +1,7 @@
 package activerecord
 
 import (
-	"github.com/pkg/errors"
+	"fmt"
 )
 
 var (
@@ -28,7 +28,7 @@ func (r *Reflection) AddReflection(name string, rel *Relation) {
 func (r *Reflection) Reflection(name string) (*Relation, error) {
 	rel, ok := r.rels[name]
 	if !ok {
-		return nil, errors.Errorf("unknown relation %q", name)
+		return nil, fmt.Errorf("unknown relation %q", name)
 	}
 	return rel, nil
 }

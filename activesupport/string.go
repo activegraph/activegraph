@@ -32,29 +32,29 @@ func (ss StringSlice) Contains(v interface{}) bool {
 	return false
 }
 
-func (ss StringSlice) Find(pred func(String) bool) String {
+func (ss StringSlice) Find(pred func(Str) bool) Str {
 	for i := range ss {
-		if pred(String(ss[i])) {
-			return String(ss[i])
+		if pred(Str(ss[i])) {
+			return Str(ss[i])
 		}
 	}
-	return String("")
+	return Str("")
 }
 
-type String string
+type Str string
 
 var blankStringRe = regexp.MustCompile(`\A[[:space:]]*\z`)
 
 // IsBlank returns true when string contains only space characters, and false otherwise.
-func (s String) IsBlank() bool {
+func (s Str) IsBlank() bool {
 	return blankStringRe.Match([]byte(s))
 }
 
 // IsEmpty returns true when lenght of string is zero, and false otherwise.
-func (s String) IsEmpty() bool {
+func (s Str) IsEmpty() bool {
 	return len(s) == 0
 }
 
-func (s String) IsNotEmpty() bool {
+func (s Str) IsNotEmpty() bool {
 	return len(s) != 0
 }

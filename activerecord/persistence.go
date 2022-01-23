@@ -7,12 +7,12 @@ import (
 	"github.com/activegraph/activegraph/activesupport"
 )
 
-type ErrTableNotFound struct {
+type ErrTableNotExist struct {
 	TableName string
 }
 
-func (e ErrTableNotFound) Error() string {
-	return fmt.Sprintf("ErrTableNotFound: '%s'", e.TableName)
+func (e ErrTableNotExist) Error() string {
+	return fmt.Sprintf("ErrTableNotExist: '%s'", e.TableName)
 }
 
 type Persistence interface {
@@ -60,6 +60,10 @@ type ColumnDefinition struct {
 	IsPrimaryKey bool
 }
 
+type TableInfo interface {
+	Name() string
+}
+
 type Conn interface {
 	BeginTransaction(ctx context.Context) (Conn, error)
 	CommitTransaction(ctx context.Context) error
@@ -69,6 +73,8 @@ type Conn interface {
 	ExecInsert(ctx context.Context, op *InsertOperation) (id interface{}, err error)
 	ExecDelete(ctx context.Context, op *DeleteOperation) (err error)
 	ExecQuery(ctx context.Context, op *QueryOperation, cb func(activesupport.Hash) bool) (err error)
+
+	// Stat(tableName string) (TableInfo, error)
 
 	ColumnDefinitions(ctx context.Context, tableName string) ([]ColumnDefinition, error)
 	LookupType(typeName string) (Type, error)
@@ -109,6 +115,10 @@ func (c *errConn) ExecQuery(context.Context, *QueryOperation, func(activesupport
 }
 
 func (c *errConn) LookupType(typeName string) (Type, error) {
+	return nil, c.err
+}
+
+func (c *errConn) Stat(tableName string) (TableInfo, error) {
 	return nil, c.err
 }
 

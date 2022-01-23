@@ -6,7 +6,6 @@ import (
 	"sync"
 
 	"github.com/activegraph/activegraph/internal"
-	"github.com/pkg/errors"
 )
 
 const (
@@ -111,7 +110,7 @@ func (h *connectionHandler) Transaction(ctx context.Context, fn func() error) er
 
 	if err = fn(); err != nil {
 		if e := conn.RollbackTransaction(ctx); e != nil {
-			err = errors.WithMessage(err, e.Error())
+			err = fmt.Errorf("%s: %w", e.Error(), err)
 		}
 		return err
 	}

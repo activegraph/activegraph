@@ -1,11 +1,11 @@
 package actionview
 
 import (
+	"fmt"
+
 	"github.com/activegraph/activegraph/actioncontroller"
 	"github.com/activegraph/activegraph/activerecord"
 	"github.com/activegraph/activegraph/activesupport"
-
-	"github.com/pkg/errors"
 )
 
 type ResultFunc func(*actioncontroller.Context) (interface{}, error)
@@ -32,7 +32,7 @@ func content(content interface{}) actioncontroller.Result {
 		case nil:
 			return nil, nil
 		default:
-			return nil, errors.Errorf("%T does not support hash conversion", content)
+			return nil, fmt.Errorf("%T does not support hash conversion", content)
 		}
 	})
 }
@@ -111,7 +111,7 @@ func traverseCollection(
 // Method queries all nested attributes specified in ctx.Selection. That means
 // additionall queries to a database are implied.
 func NestedView(
-	ctx *actioncontroller.Context, record activerecord.Result,
+	ctx *actioncontroller.Context, record activerecord.RecordResult,
 ) actioncontroller.Result {
 	if record.IsErr() {
 		return Error(record.Err())

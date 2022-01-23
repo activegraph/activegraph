@@ -9,7 +9,7 @@ import (
 
 	"github.com/activegraph/activegraph/activerecord"
 	_ "github.com/activegraph/activegraph/activerecord/sqlite3"
-	"github.com/activegraph/activegraph/activesupport"
+	. "github.com/activegraph/activegraph/activesupport"
 )
 
 func initAuthorTable(t *testing.T, conn activerecord.Conn) {
@@ -64,7 +64,7 @@ func TestRelation_New(t *testing.T) {
 	initAuthorTable(t, conn)
 
 	Author := activerecord.New("author")
-	a := Author.New(activesupport.Hash{"name": "Nassim Taleb"})
+	a := Author.New(Hash{"name": "Nassim Taleb"})
 	a = a.Insert()
 
 	require.NoError(t, a.Err())
@@ -99,11 +99,11 @@ func TestRelation_New_MultipleParams(t *testing.T) {
 	initProductTable(t, conn)
 
 	Product := activerecord.New("product", func(r *activerecord.R) {})
-	p := Product.New(activesupport.Hash{}, activesupport.Hash{})
+	p := Product.New(Hash{}, Hash{})
 
 	require.Error(t, p.Err())
 
-	err = &activesupport.ErrMultipleVariadicArguments{Name: "params"}
+	err = &ErrMultipleVariadicArguments{Name: "params"}
 	require.Equal(t, err.Error(), p.Err().Error())
 }
 
@@ -155,8 +155,8 @@ func TestRelation_TransactionalInsert(t *testing.T) {
 	err = activerecord.Transaction(context.TODO(), func() error {
 		author := Author.Create(Hash{"name": "Max Tegmark"})
 
-		book := author.AndThen(func(activerecord.Option) activerecord.Result {
-			return Book.Create(Hash{"title": "Life 3.0", "year": 2017, "author_id": 1})
+		book := author.AndThen(func(*activerecord.ActiveRecord) Result[*activerecord.ActiveRecord] {
+			return Book.Create(Hash{"title": "Life 3.0", "year": 2017, "author_id": 1}).Result
 		})
 
 		return book.Err()
