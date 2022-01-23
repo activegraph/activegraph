@@ -5,17 +5,17 @@ type Initializer interface {
 }
 
 func IsBlank(value interface{}) bool {
-	var s String
+	var s Str
 
 	switch value := value.(type) {
 	case bool:
 		return value
 	case string:
-		s = String(value)
+		s = Str(value)
 	case []rune:
-		s = String(string(value))
+		s = Str(string(value))
 	case []byte:
-		s = String(string(value))
+		s = Str(string(value))
 	case nil:
 		return true
 	default:

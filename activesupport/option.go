@@ -4,56 +4,44 @@ import (
 	"fmt"
 )
 
-type T interface {
-	Default() interface{}
-}
-
-type Option struct {
-	t T
-
-	some interface{}
+type Option[T any] struct {
+	some *T
 	none bool
 }
 
-func None(t T) Option {
-	return Option{t, nil, true}
+func None[T any]() Option[T] {
+	return Option[T]{new(T), true}
 }
 
-func Some(t T, val interface{}) Option {
-	if t == nil {
-		panic("some is nil")
-	}
-	return Option{t, val, false}
+func Some[T any](val T) Option[T] {
+	return Option[T]{&val, false}
 }
 
-func (o Option) String() string {
+func (o Option[T]) String() string {
 	if o.none {
 		return "None"
 	}
-	return fmt.Sprintf("Some(%s)", o.some)
+	return fmt.Sprintf("Some(%v)", *o.some)
 }
 
-func (o Option) IsNone() bool {
+func (o Option[T]) IsNone() bool {
 	return o.none
 }
 
-func (o Option) Unwrap() interface{} {
+func (o Option[T]) IsSome() bool {
+	return !o.none
+}
+
+func (o Option[T]) Unwrap() T {
 	if o.none {
 		panic("called `Option.Unwrap` on a `None` value")
 	}
-	return o.some
+	return *o.some
 }
 
-func (o Option) UnwrapOr(val interface{}) interface{} {
+func (o Option[T]) UnwrapOr(val T) T {
 	if o.none {
 		return val
 	}
-	return o.some
-}
-
-func (o Option) UnwrapOrDefault() interface{} {
-	if o.none {
-		return o.t.Default()
-	}
-	return o.some
+	return *o.some
 }

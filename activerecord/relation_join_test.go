@@ -10,6 +10,7 @@ import (
 
 	"github.com/activegraph/activegraph/activerecord"
 	_ "github.com/activegraph/activegraph/activerecord/sqlite3"
+	. "github.com/activegraph/activegraph/activesupport"
 )
 
 func TestRelation_JoinsOK(t *testing.T) {

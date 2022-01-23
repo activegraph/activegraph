@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/activegraph/activegraph/activesupport"
+	. "github.com/activegraph/activegraph/activesupport"
 )
 
 type ErrRecordNotFound struct {
@@ -13,212 +13,102 @@ type ErrRecordNotFound struct {
 	ID         interface{}
 }
 
-func (e ErrRecordNotFound) Error() string {
+func (e *ErrRecordNotFound) Is(target error) bool {
+	_, ok := target.(*ErrRecordNotFound)
+	return ok
+}
+
+func (e *ErrRecordNotFound) Error() string {
 	return fmt.Sprintf("record not found by %s = %v", e.PrimaryKey, e.ID)
 }
 
-type CollectionOption struct {
-	activesupport.Option
+type ErrRecordNotUnique struct {
+	Err error
 }
 
-// NoneCollection is no Collection value.
-var NoneCollection = CollectionOption{activesupport.None(_CollectionType)}
-
-// SomeCollection is a value of Relation.
-func SomeCollection(r *Relation) CollectionOption {
-	return CollectionOption{activesupport.Some(_CollectionType, r)}
+func (e *ErrRecordNotUnique) Is(target error) bool {
+	_, ok := target.(*ErrRecordNotUnique)
+	return ok
 }
 
-func (o CollectionOption) Unwrap() *Relation {
-	return o.Option.Unwrap().(*Relation)
-}
-
-func (o CollectionOption) UnwrapOrDefault() *Relation {
-	return o.Option.UnwrapOrDefault().(*Relation)
+func (e *ErrRecordNotUnique) Error() string {
+	return e.Err.Error()
 }
 
 type CollectionResult struct {
-	result activesupport.Result
+	Result[*Relation]
 }
 
-func ReturnCollection(rel *Relation, err error) CollectionResult {
-	switch rel {
-	case nil:
-		return CollectionResult{
-			activesupport.Return(_CollectionType, NoneCollection, err),
-		}
-	default:
-		return CollectionResult{
-			activesupport.Return(_CollectionType, SomeCollection(rel), err),
-		}
-	}
-}
-
-func OkCollection(option CollectionOption) CollectionResult {
-	return CollectionResult{activesupport.Ok(_CollectionType, option)}
+func OkCollection(rel *Relation) CollectionResult {
+	return CollectionResult{Ok(rel)}
 }
 
 func ErrCollection(err error) CollectionResult {
-	return ReturnCollection(nil, err)
+	return CollectionResult{Err[*Relation](err)}
 }
 
-func (r CollectionResult) Expect(msg string) *Relation {
-	return r.result.Expect(msg).(CollectionOption).Unwrap()
-}
-func (r CollectionResult) ExpectErr(msg string) error   { return r.result.ExpectErr(msg) }
-func (r CollectionResult) Result() activesupport.Result { return r.result }
-func (r CollectionResult) String() string               { return r.result.String() }
-func (r CollectionResult) IsErr() bool                  { return r.result.IsErr() }
-func (r CollectionResult) Err() error                   { return r.result.Err() }
-
-func (r CollectionResult) Ok() CollectionOption {
-	return r.result.Ok().UnwrapOr(NoneCollection).(CollectionOption)
-}
-
-func (r CollectionResult) Unwrap() *Relation {
-	return r.Ok().Unwrap()
-}
-
-// func (r CollectionResult) AndThen(op func(CollectionOption) CollectionResult) CollectionResult {
-// 	result := r.Result.AndThen(func(val interface{}) activesupport.Result {
-// 		return op(val.(CollectionOption)).Result
-// 	})
-// 	return CollectionResult{result}
-// }
-
-func (r CollectionResult) ToA() (Array, error) {
-	if r.IsErr() {
-		return nil, r.Err()
+func (c CollectionResult) ToA() (Array, error) {
+	if c.IsErr() {
+		return nil, c.Err()
 	}
-	return r.Unwrap().ToA()
+	return c.Unwrap().ToA()
 }
 
-func (r CollectionResult) Len() int {
-	return 0
+type RecordResult struct {
+	Result[*ActiveRecord]
 }
 
-var (
-	// _ AssociationAccessors = Result{}
-	// _ CollectionAccessors  = Result{}
-
-	_Type           = new(_TypeImpl)
-	_CollectionType = new(_CollectionTypeImpl)
-)
-
-type _TypeImpl struct{}
-
-func (*_TypeImpl) Default() interface{} { return (*ActiveRecord)(nil) }
-
-type _CollectionTypeImpl struct{}
-
-func (*_CollectionTypeImpl) Default() interface{} { return (*Relation)(nil) }
-
-type Option struct {
-	activesupport.Option
+func OkRecord(r *ActiveRecord) RecordResult {
+	return RecordResult{Ok(r)}
 }
 
-// None is no ActiveRecord value.
-var None = Option{activesupport.None(_Type)}
-
-// Some value of ActiveRecord.
-func Some(r *ActiveRecord) Option {
-	return Option{activesupport.Some(_Type, r)}
+func ErrRecord(err error) RecordResult {
+	return RecordResult{Err[*ActiveRecord](err)}
 }
 
-func (o Option) Unwrap() *ActiveRecord {
-	return o.Option.Unwrap().(*ActiveRecord)
+func ReturnRecord(r *ActiveRecord, err error) RecordResult {
+	return RecordResult{Return(r, err)}
 }
 
-func (o Option) UnwrapOrDefault() *ActiveRecord {
-	return o.Option.UnwrapOrDefault().(*ActiveRecord)
-}
-
-func Return(r *ActiveRecord, err error) Result {
-	switch r {
-	case nil:
-		return Result{activesupport.Return(_Type, None, err)}
-	default:
-		return Result{activesupport.Return(_Type, Some(r), err)}
-	}
-}
-
-func Ok(option Option) Result {
-	return Result{activesupport.Ok(_Type, option)}
-}
-
-func Err(err error) Result {
-	return Return(nil, err)
-}
-
-type Result struct {
-	result activesupport.Result
-}
-
-func (r Result) Result() activesupport.Result { return r.result }
-func (r Result) String() string               { return r.result.String() }
-func (r Result) IsErr() bool                  { return r.result.IsErr() }
-func (r Result) Err() error                   { return r.result.Err() }
-
-func (r Result) UnwrapOr(rec *ActiveRecord) *ActiveRecord {
-	return r.result.UnwrapOr(Some(rec)).(Option).Unwrap()
-}
-
-func (r Result) Expect(msg string) *ActiveRecord { return r.result.Expect(msg).(Option).Unwrap() }
-func (r Result) ExpectErr(msg string) error      { return r.result.ExpectErr(msg) }
-
-func (r Result) Ok() Option {
-	return r.result.Ok().UnwrapOr(None).(Option)
-}
-
-func (r Result) Unwrap() *ActiveRecord {
-	return r.Ok().Unwrap()
-}
-
-// func (r *Result) AttributePresent(attrName string) bool {
-// }
-// func (r *Result) Attribute(attrName string) interface{} {
-// }
-// func (r *Result) AccessAttribute(attrName string) interface{} {
-// }
-// func (r *Result) AssignAttribute(attrName string, val interface{}) error {
-// }
-// func (r *Result) AssignAttributes(newAttributes map[string]interface{}) error {
-// }
-
-func (r Result) AndThen(op func(Option) Result) Result {
-	result := r.result.AndThen(func(val interface{}) activesupport.Result {
-		return op(val.(Option)).result
-	})
-	return Result{result}
-}
-
-func (r Result) Insert() Result {
-	return r.AndThen(func(o Option) Result {
-		if o.IsNone() {
-			return Ok(None)
+func (r RecordResult) andThen(op func(*ActiveRecord) (*ActiveRecord, error)) RecordResult {
+	return RecordResult{r.AndThen(func(r *ActiveRecord) Result[*ActiveRecord] {
+		var (
+			rec *ActiveRecord
+			err error
+		)
+		if r != nil {
+			rec, err = op(r)
 		}
-		return Return(o.Unwrap().Insert())
-	})
-}
-func (r Result) Update() Result { return Err(fmt.Errorf("not implemented")) }
-func (r Result) Delete() Result { return Err(fmt.Errorf("not implemented")) }
-
-func (r Result) Association(name string) Result {
-	switch r.Ok() {
-	case None:
-		return r
-	default:
-		return r.Unwrap().Association(name)
-	}
+		return Return(rec, err)
+	})}
 }
 
-func (r Result) Collection(name string) CollectionResult {
-	switch r.Ok() {
-	case None:
-		return OkCollection(NoneCollection)
-	default:
-		return r.Unwrap().Collection(name)
+func (r RecordResult) Insert() RecordResult {
+	return r.andThen((*ActiveRecord).Insert)
+}
+
+func (r RecordResult) Update() RecordResult {
+	return r.andThen((*ActiveRecord).Update)
+}
+
+func (r RecordResult) Delete() RecordResult {
+	return r.andThen((*ActiveRecord).Delete)
+}
+
+func (r RecordResult) Association(name string) RecordResult {
+	return RecordResult{r.AndThen(func(r *ActiveRecord) Result[*ActiveRecord] {
+		return r.Association(name)
+	})}
+}
+
+func (r RecordResult) Collection(name string) CollectionResult {
+	if rec := r.Ok(); rec.IsSome() {
+		return rec.Unwrap().Collection(name)
 	}
+	if r.IsErr() {
+		return ErrCollection(r.Err())
+	}
+	return OkCollection(nil)
 }
 
 type ActiveRecord struct {
@@ -251,8 +141,8 @@ func (r *ActiveRecord) init() *ActiveRecord {
 	return r
 }
 
-func (r *ActiveRecord) ToHash() activesupport.Hash {
-	hash := make(activesupport.Hash, len(r.attributes.keys))
+func (r *ActiveRecord) ToHash() Hash {
+	hash := make(Hash, len(r.attributes.keys))
 	for key := range r.attributes.keys {
 		hash[key] = nil
 		if value, ok := r.attributes.values[key]; ok {

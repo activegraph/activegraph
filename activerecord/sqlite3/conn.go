@@ -6,8 +6,7 @@ import (
 	"fmt"
 	"strings"
 
-	_ "github.com/mattn/go-sqlite3"
-	"github.com/pkg/errors"
+	"github.com/mattn/go-sqlite3"
 
 	"github.com/activegraph/activegraph/activerecord"
 	"github.com/activegraph/activegraph/activesupport"
@@ -56,7 +55,7 @@ func (c *Conn) BeginTransaction(ctx context.Context) (activerecord.Conn, error) 
 
 func (c *Conn) CommitTransaction(ctx context.Context) error {
 	if c.tx == nil {
-		return errors.Errorf("no transaction is open")
+		return fmt.Errorf("no transaction is open")
 	}
 	fmt.Println("COMMIT TRANSACTION")
 	return c.tx.Commit()
@@ -64,7 +63,7 @@ func (c *Conn) CommitTransaction(ctx context.Context) error {
 
 func (c *Conn) RollbackTransaction(ctx context.Context) error {
 	if c.tx == nil {
-		return errors.Errorf("no transaction is open")
+		return fmt.Errorf("no transaction is open")
 	}
 	fmt.Println("ROLLBACK TRANSACTION")
 	return c.tx.Rollback()
@@ -121,7 +120,17 @@ func (c *Conn) ExecInsert(ctx context.Context, op *activerecord.InsertOperation)
 
 	result, err := c.querier.ExecContext(ctx, stmt)
 	if err != nil {
-		return 0, err
+		switch err := err.(type) {
+		case sqlite3.Error:
+			switch err.ExtendedCode {
+			case sqlite3.ErrConstraintPrimaryKey, sqlite3.ErrConstraintUnique:
+				return 0, &activerecord.ErrRecordNotUnique{Err: err}
+			default:
+				return 0, err
+			}
+		default:
+			return 0, err
+		}
 	}
 
 	rows, err := result.RowsAffected()
@@ -129,7 +138,7 @@ func (c *Conn) ExecInsert(ctx context.Context, op *activerecord.InsertOperation)
 		return 0, err
 	}
 	if rows != 1 {
-		return 0, errors.Errorf("expected single row affected, got %d rows affected", rows)
+		return 0, fmt.Errorf("expected single row affected, got %d rows affected", rows)
 	}
 
 	return result.LastInsertId()
@@ -234,7 +243,7 @@ func (c *Conn) ColumnDefinitions(ctx context.Context, tableName string) (
 		})
 	}
 	if len(definitions) == 0 {
-		return nil, activerecord.ErrTableNotFound{TableName: tableName}
+		return nil, activerecord.ErrTableNotExist{TableName: tableName}
 	}
 	return definitions, nil
 }
