@@ -366,6 +366,10 @@ func (a *associations) Association(assocName string) RecordResult {
 		return ErrRecord(ErrUnknownAssociation{RecordName: a.rec.Name(), Assoc: assocName})
 	}
 
+	if rec, ok := a.values[assocName]; ok {
+		return OkRecord(rec)
+	}
+
 	sa, ok := assoc.(SingularAssociation)
 	if !ok {
 		message := fmt.Sprintf("'%s' is not a singular association", assocName)

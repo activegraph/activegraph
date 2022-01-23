@@ -504,7 +504,7 @@ func (rel *Relation) Find(id interface{}) RecordResult {
 //
 //	person := Person.FindBy("salary > ?", 10000)
 //	// Ok(Some(#<Person id: 3, name: "Jeff", occupation: "CEO">))
-func (rel *Relation) FindBy(cond string, arg interface{}) Result[*ActiveRecord] {
+func (rel *Relation) FindBy(cond string, arg interface{}) RecordResult {
 	return rel.Where(cond, arg).First()
 }
 
