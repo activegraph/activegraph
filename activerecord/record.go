@@ -212,6 +212,7 @@ func (r *ActiveRecord) AssignAssociation(assocName string, rec *ActiveRecord) er
 		return ErrUnknownAssociation{RecordName: r.name, Assoc: assocName}
 	}
 
+	r.associations.values[assocName] = rec
 	return nil
 }
 
