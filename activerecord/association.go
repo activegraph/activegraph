@@ -33,6 +33,7 @@ type Association interface {
 
 type SingularAssociation interface {
 	Association
+	AssignAssociation(owner *ActiveRecord, target *ActiveRecord) RecordResult
 	AccessAssociation(owner *ActiveRecord) RecordResult
 }
 
@@ -52,7 +53,7 @@ type AssociationMethods interface {
 }
 
 type AssociationAccessors interface {
-	// AssignAssociation(assocName string, assoc *ActiveRecord) error
+	// AssignAssociation(string, assoc *ActiveRecord) error
 	Association(assocName string) RecordResult
 	AccessAssociation(assocName string) (*ActiveRecord, error)
 }
@@ -127,6 +128,10 @@ func (a *BelongsTo) AccessAssociation(owner *ActiveRecord) RecordResult {
 	return targets.WithContext(owner.Context()).Find(targetId)
 }
 
+func (a *BelongsTo) AssignAssociation(owner *ActiveRecord, target *ActiveRecord) RecordResult {
+	return ErrRecord(fmt.Errorf("not implemented"))
+}
+
 func (a *BelongsTo) String() string {
 	return fmt.Sprintf("#<Association type: 'belongs_to', name: '%s'>", a.targetName)
 }
@@ -199,15 +204,11 @@ func (a *HasOne) AssociationOwner() *Relation {
 }
 
 func (a *HasOne) AssociationName() string {
-	if a.foreignKey != "" {
-		return a.foreignKey
-	}
 	return a.targetName + "_" + defaultPrimaryKeyName
 }
 
 func (a *HasOne) AssociationForeignKey() string {
-	// TODO: return actual table's primary key.
-	return defaultPrimaryKeyName
+	return a.owner.Name() + "_" + defaultPrimaryKeyName
 }
 
 // The association indicates that one model has a reference to this model.
@@ -251,6 +252,40 @@ func (a *HasOne) AccessAssociation(owner *ActiveRecord) RecordResult {
 			fmt.Sprintf("declared 'has_one' association, but has many: %s", records),
 		})
 	}
+}
+
+func (a *HasOne) AssignAssociation(owner *ActiveRecord, target *ActiveRecord) RecordResult {
+	targets, err := a.reflection.Reflection(a.targetName)
+	if err != nil {
+		return ErrRecord(err)
+	}
+
+	if target.Name() != targets.Name() {
+		const format = "cannot assign '%q' to '%q' as %s association in '%q'"
+		return ErrRecord(fmt.Errorf(
+			format, target.Name(), targets.Name(), a.targetName, owner.Name(),
+		))
+	}
+
+	// Put a reference of the owner (owner_id) to the target record.
+	err = target.AssignAttribute(a.AssociationForeignKey(), owner.ID())
+	if err != nil {
+		return ErrRecord(err)
+	}
+
+	_, err = target.WithContext(owner.Context()).Insert()
+	if err != nil {
+		return ErrRecord(err)
+	}
+
+	// Update value of the target for owner, so new calls to access the
+	// target won't generate SQL queries to the database.
+	owner.associations.set(target.Name(), target)
+
+	// TODO: if the new target repaces existing one, what to do with the existing?
+
+	// Return an owner, which is not modified after the target insertion.
+	return OkRecord(owner)
 }
 
 func (a *HasOne) String() string {
@@ -318,11 +353,45 @@ func (a *associations) HasAssociations(assocNames ...string) bool {
 	return true
 }
 
-func (a *associations) get(assocName string) Association {
+func (a *associations) find(assocName string) (Association, error) {
 	if !a.HasAssociation(assocName) {
-		return nil
+		return nil, ErrUnknownAssociation{RecordName: a.rec.Name(), Assoc: assocName}
 	}
-	return a.keys[assocName]
+	return a.keys[assocName], nil
+}
+
+func (a *associations) findSingular(assocName string) (SingularAssociation, error) {
+	assoc, err := a.find(assocName)
+	if err != nil {
+		return nil, err
+	}
+
+	sa, ok := assoc.(SingularAssociation)
+	if !ok {
+		message := fmt.Sprintf("'%s' is not a singular association", assocName)
+		return nil, ErrAssociation{Message: message}
+	}
+	return sa, nil
+}
+
+func (a *associations) findCollection(assocName string) (CollectionAssociation, error) {
+	assoc, err := a.find(assocName)
+	if err != nil {
+		return nil, err
+	}
+
+	ca, ok := assoc.(CollectionAssociation)
+	if !ok {
+		message := fmt.Sprintf("'%s' is not a collection association", assocName)
+		return nil, ErrAssociation{Message: message}
+	}
+	return ca, nil
+}
+
+func (a *associations) set(assocName string, rec *ActiveRecord) {
+	if a.HasAssociation(assocName) {
+		a.values[assocName] = rec
+	}
 }
 
 // ReflectOnAssociation returns AssociationReflection for the specified association.
@@ -361,20 +430,15 @@ func (a *associations) AssociationNames() []string {
 }
 
 func (a *associations) Association(assocName string) RecordResult {
-	assoc := a.get(assocName)
-	if assoc == nil {
-		return ErrRecord(ErrUnknownAssociation{RecordName: a.rec.Name(), Assoc: assocName})
+	sa, err := a.findSingular(assocName)
+	if err != nil {
+		return ErrRecord(err)
 	}
 
 	if rec, ok := a.values[assocName]; ok {
 		return OkRecord(rec)
 	}
 
-	sa, ok := assoc.(SingularAssociation)
-	if !ok {
-		message := fmt.Sprintf("'%s' is not a singular association", assocName)
-		return ErrRecord(ErrAssociation{Message: message})
-	}
 	return sa.AccessAssociation(a.rec)
 }
 
@@ -383,16 +447,18 @@ func (a *associations) AccessAssociation(assocName string) (*ActiveRecord, error
 	return assoc.Ok().UnwrapOr(nil), assoc.Err()
 }
 
-func (a *associations) Collection(collName string) CollectionResult {
-	assoc := a.get(collName)
-	if assoc == nil {
-		return ErrCollection(ErrUnknownAssociation{RecordName: a.rec.Name(), Assoc: collName})
+func (a *associations) AssignAssociation(assocName string, target *ActiveRecord) error {
+	sa, err := a.findSingular(assocName)
+	if err != nil {
+		return err
 	}
+	return sa.AssignAssociation(a.rec, target).Err()
+}
 
-	ca, ok := assoc.(CollectionAssociation)
-	if !ok {
-		message := fmt.Sprintf("'%s' is not a collection association", collName)
-		return ErrCollection(ErrAssociation{Message: message})
+func (a *associations) Collection(collName string) CollectionResult {
+	ca, err := a.findCollection(collName)
+	if err != nil {
+		return ErrCollection(err)
 	}
 	return CollectionResult{ca.AccessCollection(a.rec)}
 }
