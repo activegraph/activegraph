@@ -80,11 +80,7 @@ func (m *M) CreateTable(name string, init func(*Table)) {
 }
 
 func (m *M) AddForeignKey(owner, target string) {
-	// TODO: id is not necessary a primary key.
-	m.references[owner] = fmt.Sprintf(
-		`FOREIGN KEY ("%s_id") REFERENCES "%s" ("id")`,
-		strings.TrimSuffix(target, "s"), target,
-	)
+	m.references[owner] = target
 }
 
 func (m *M) prepareSQL(table *Table) string {
@@ -117,9 +113,12 @@ func (m *M) prepareSQL(table *Table) string {
 		fmt.Fprintf(&buf, `%s %s, `, columnName, sqlType)
 	}
 
-	if ref, ok := m.references[table.name]; ok {
-		fmt.Fprintf(&buf, `author_id INTEGER, `)
-		fmt.Fprintf(&buf, `%s, `, ref)
+	if targetTable, ok := m.references[table.name]; ok {
+		target := strings.TrimSuffix(targetTable, "s")
+
+		// TODO: id is not necessary a primary key.
+		fmt.Fprintf(&buf, `%s_id INTEGER, `, target)
+		fmt.Fprintf(&buf, `FOREIGN KEY ("%s_id") REFERENCES "%s" ("id") `, target, targetTable)
 	}
 	fmt.Fprintf(&buf, `PRIMARY KEY("%s"))`, primaryKey)
 	return buf.String()

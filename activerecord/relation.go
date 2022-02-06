@@ -375,10 +375,8 @@ func (rel *Relation) Each(fn func(*ActiveRecord) error) error {
 				return false
 			}
 
-			e = rec.AssignAssociation(join.Relation.Name(), arec)
-			if lasterr = e; e != nil {
-				return false
-			}
+			// TODO: Fix this assignment, it should return an error.
+			rec.associations.set(join.Relation.Name(), arec)
 		}
 
 		if lasterr = fn(rec); lasterr != nil {

@@ -101,6 +101,16 @@ func (r RecordResult) Association(name string) RecordResult {
 	})}
 }
 
+func (r RecordResult) AssignAssociation(name string, target RecordResult) RecordResult {
+	return RecordResult{r.AndThen(func(r *ActiveRecord) Result[*ActiveRecord] {
+		if target.IsErr() {
+			return target
+		}
+		err := r.associations.AssignAssociation(name, target.Unwrap())
+		return ReturnRecord(r, err)
+	})}
+}
+
 func (r RecordResult) Collection(name string) CollectionResult {
 	if rec := r.Ok(); rec.IsSome() {
 		return rec.Unwrap().Collection(name)
@@ -207,14 +217,14 @@ func (r *ActiveRecord) Validate() error {
 	return r.validations.validate(r)
 }
 
-func (r *ActiveRecord) AssignAssociation(assocName string, rec *ActiveRecord) error {
-	if !r.HasAssociation(assocName) {
-		return ErrUnknownAssociation{RecordName: r.name, Assoc: assocName}
-	}
-
-	r.associations.values[assocName] = rec
-	return nil
-}
+// func (r *ActiveRecord) AssignAssociation(assocName string, rec *ActiveRecord) error {
+// 	if !r.HasAssociation(assocName) {
+// 		return ErrUnknownAssociation{RecordName: r.name, Assoc: assocName}
+// 	}
+//
+// 	r.associations.values[assocName] = rec
+// 	return nil
+// }
 
 func (r *ActiveRecord) Insert() (*ActiveRecord, error) {
 	if err := r.Validate(); err != nil {
