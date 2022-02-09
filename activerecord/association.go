@@ -204,7 +204,7 @@ func (a *HasOne) AssociationOwner() *Relation {
 }
 
 func (a *HasOne) AssociationName() string {
-	return a.targetName + "_" + defaultPrimaryKeyName
+	return a.targetName
 }
 
 func (a *HasOne) AssociationForeignKey() string {
@@ -280,7 +280,8 @@ func (a *HasOne) AssignAssociation(owner *ActiveRecord, target *ActiveRecord) Re
 
 	// Update value of the target for owner, so new calls to access the
 	// target won't generate SQL queries to the database.
-	owner.associations.set(target.Name(), target)
+	// TODO: Cache target association in "associations" type for further access.
+	//owner.associations.set(target.Name(), target)
 
 	// TODO: if the new target repaces existing one, what to do with the existing?
 
