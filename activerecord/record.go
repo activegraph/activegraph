@@ -54,6 +54,19 @@ func (c CollectionResult) ToA() (Array, error) {
 	return c.Unwrap().ToA()
 }
 
+func (c CollectionResult) DeleteAll() error {
+	records, err := c.ToA()
+	if err != nil {
+		return err
+	}
+	for i := 0; i < len(records); i++ {
+		if _, err := records[i].Delete(); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 type RecordResult struct {
 	Result[*ActiveRecord]
 }
@@ -107,6 +120,20 @@ func (r RecordResult) AssignAssociation(name string, target RecordResult) Record
 			return target
 		}
 		err := r.associations.AssignAssociation(name, target.Unwrap())
+		return ReturnRecord(r, err)
+	})}
+}
+
+func (r RecordResult) AssignCollection(name string, targets ...RecordResult) RecordResult {
+	return RecordResult{r.AndThen(func(r *ActiveRecord) Result[*ActiveRecord] {
+		records := make([]*ActiveRecord, 0, len(targets))
+		for i := 0; i < len(targets); i++ {
+			if targets[i].IsErr() {
+				return targets[i]
+			}
+			records = append(records, targets[i].Unwrap())
+		}
+		err := r.associations.AssignCollection(name, records...)
 		return ReturnRecord(r, err)
 	})}
 }
@@ -216,15 +243,6 @@ func (r *ActiveRecord) IsValid() bool {
 func (r *ActiveRecord) Validate() error {
 	return r.validations.validate(r)
 }
-
-// func (r *ActiveRecord) AssignAssociation(assocName string, rec *ActiveRecord) error {
-// 	if !r.HasAssociation(assocName) {
-// 		return ErrUnknownAssociation{RecordName: r.name, Assoc: assocName}
-// 	}
-//
-// 	r.associations.values[assocName] = rec
-// 	return nil
-// }
 
 func (r *ActiveRecord) Insert() (*ActiveRecord, error) {
 	if err := r.Validate(); err != nil {

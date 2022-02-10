@@ -78,6 +78,7 @@ func (c *Conn) ExecDelete(ctx context.Context, op *activerecord.DeleteOperation)
 	const stmt = `DELETE FROM "%s" WHERE "%s" = '%v'`
 	sql := fmt.Sprintf(stmt, op.TableName, op.PrimaryKey, op.Value)
 
+	fmt.Println(sql)
 	_, err := c.querier.ExecContext(ctx, sql)
 	return err
 }

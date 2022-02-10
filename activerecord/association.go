@@ -39,6 +39,7 @@ type SingularAssociation interface {
 
 type CollectionAssociation interface {
 	Association
+	AssignCollection(owner *ActiveRecord, targets ...*ActiveRecord) RecordResult
 	AccessCollection(owner *ActiveRecord) CollectionResult
 }
 
@@ -186,6 +187,31 @@ func (a *HasMany) AccessCollection(owner *ActiveRecord) CollectionResult {
 	// TODO: Make "scope" accessable and understandable.
 	targets = targets.Where(a.AssociationForeignKey(), owner.ID())
 	return CollectionResult{Ok(targets)}
+}
+
+func (a *HasMany) AssignCollection(owner *ActiveRecord, targets ...*ActiveRecord) RecordResult {
+	// Perform very naive approach delete existing targets and set new targets.
+	err := owner.Collection(a.targetName + "s").DeleteAll()
+	if err != nil {
+		return ErrRecord(err)
+	}
+
+	for i := 0; i < len(targets); i++ {
+		// TODO: Ensure each target record is an instance of the association's owner.
+
+		// Put a reference of the owner (owner_id) to the target record.
+		err = targets[i].AssignAttribute(a.AssociationForeignKey(), owner.ID())
+		if err != nil {
+			return ErrRecord(err)
+		}
+
+		_, err = targets[i].WithContext(owner.Context()).Insert()
+		if err != nil {
+			return ErrRecord(err)
+		}
+	}
+
+	return OkRecord(owner)
 }
 
 func (a *HasMany) String() string {
@@ -467,4 +493,12 @@ func (a *associations) Collection(collName string) CollectionResult {
 func (a *associations) AccessCollection(collName string) (*Relation, error) {
 	collection := a.Collection(collName)
 	return collection.Ok().UnwrapOr(nil), collection.Err()
+}
+
+func (a *associations) AssignCollection(collName string, targets ...*ActiveRecord) error {
+	ca, err := a.findCollection(collName)
+	if err != nil {
+		return err
+	}
+	return ca.AssignCollection(a.rec, targets...).Err()
 }
