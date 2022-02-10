@@ -11,10 +11,10 @@ import (
 
 func TestActiveRecord_HasOne_AssignAssociation(t *testing.T) {
 	EstablishConnection(DatabaseConfig{
-		Adapter: "sqlite3", Database: t.Name() + ".db",
+		Adapter: "sqlite3", Database: t.Name(),
 	})
 
-	defer os.Remove(t.Name() + ".db")
+	defer os.Remove(t.Name())
 	defer RemoveConnection("primary")
 
 	Migrate(t.Name(), func(m *M) {
@@ -36,6 +36,7 @@ func TestActiveRecord_HasOne_AssignAssociation(t *testing.T) {
 	require.Equal(t, "target", hasOne.AssociationName())
 	require.Equal(t, "owner_id", hasOne.AssociationForeignKey())
 
+	// Assert all parameters of BelongsTo association type.
 	belongsTo := Target.ReflectOnAssociation("owner")
 	require.NotNil(t, belongsTo)
 	require.Equal(t, "owner", belongsTo.AssociationName())
@@ -56,4 +57,60 @@ func TestActiveRecord_HasOne_AssignAssociation(t *testing.T) {
 	assoc := target.Association("owner")
 	assoc.Expect("failed to access owner association")
 	require.Equal(t, owner.Unwrap().ID(), assoc.Unwrap().ID())
+}
+
+func TestActiveRecord_HasMany_AssignAssociation(t *testing.T) {
+	EstablishConnection(DatabaseConfig{
+		Adapter: "sqlite3", Database: t.Name(),
+	})
+
+	defer os.Remove(t.Name())
+	defer RemoveConnection("primary")
+
+	Migrate(t.Name(), func(m *M) {
+		m.CreateTable("owners", func(t *Table) { t.String("name") })
+		m.CreateTable("targets", func(t *Table) { t.Int64("value") })
+		m.AddForeignKey("targets", "owners")
+	})
+
+	Owner := New("owner", func(r *R) { r.HasMany("targets") })
+	Target := New("target", func(r *R) { r.BelongsTo("owner") })
+
+	require.True(t, Owner.HasAssociation("targets"))
+	require.True(t, Target.HasAssociation("owner"))
+
+	// Assert all parameters of HasMany association type.
+	hasMany := Owner.ReflectOnAssociation("targets")
+	require.NotNil(t, hasMany)
+	require.Equal(t, "target", hasMany.AssociationName())
+	require.Equal(t, "owner_id", hasMany.AssociationForeignKey())
+
+	// Assert all parameters of BelongsTo association type.
+	belongsTo := Target.ReflectOnAssociation("owner")
+	require.NotNil(t, belongsTo)
+	require.Equal(t, "owner", belongsTo.AssociationName())
+	require.Equal(t, "owner_id", belongsTo.AssociationForeignKey())
+
+	owner := Owner.Create(Hash{"name": "Taleb"})
+	target1 := Target.New(Hash{"value": 3})
+	target2 := Target.New(Hash{"value": 4})
+	target3 := Target.New(Hash{"value": 5})
+
+	owner = owner.AssignCollection("targets", target1, target2)
+	owner.Expect("failed to assign targets to the persisted owner")
+
+	targets, err := owner.Collection("targets").ToA()
+	require.NoError(t, err)
+	require.Len(t, targets, 2)
+
+	for i := 0; i < len(targets); i++ {
+		require.Equal(t, owner.Unwrap().ID(), targets[i].Attribute("owner_id"))
+	}
+
+	owner = owner.AssignCollection("targets", target3)
+	owner.Expect("failed to update targets of the owner")
+
+	targets, err = owner.Collection("targets").ToA()
+	require.NoError(t, err)
+	require.Len(t, targets, 1)
 }

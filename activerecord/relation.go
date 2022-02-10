@@ -74,10 +74,6 @@ func (r *R) BelongsTo(name string, init ...func(*BelongsTo)) {
 		panic(ErrMultipleVariadicArguments{Name: "init"})
 	}
 
-	r.attrs[assoc.AssociationForeignKey()] = attr{
-		Name: assoc.AssociationForeignKey(),
-		Type: Nil{new(Int64)},
-	}
 	r.assocs[name] = &assoc
 }
 

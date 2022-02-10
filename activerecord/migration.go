@@ -120,7 +120,7 @@ func (m *M) prepareSQL(table *Table) string {
 		fmt.Fprintf(&buf, `%s_id INTEGER, `, target)
 		fmt.Fprintf(&buf, `FOREIGN KEY ("%s_id") REFERENCES "%s" ("id") `, target, targetTable)
 	}
-	fmt.Fprintf(&buf, `PRIMARY KEY("%s"))`, primaryKey)
+	fmt.Fprintf(&buf, `PRIMARY KEY ("%s"))`, primaryKey)
 	return buf.String()
 }
 
