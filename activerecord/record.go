@@ -276,7 +276,27 @@ func (r *ActiveRecord) Insert() (*ActiveRecord, error) {
 }
 
 func (r *ActiveRecord) Update() (*ActiveRecord, error) {
-	return nil, nil
+	if err := r.Validate(); err != nil {
+		return nil, err
+	}
+
+	columnValues := make([]ColumnValue, 0, len(r.attributes.values))
+	for name, value := range r.attributes.values {
+		columnValue := ColumnValue{
+			Name:  name,
+			Type:  r.attributes.keys[name].AttributeType(),
+			Value: value,
+		}
+		columnValues = append(columnValues, columnValue)
+	}
+
+	op := UpdateOperation{
+		TableName:    r.tableName,
+		PrimaryKey:   r.attributes.primaryKey.AttributeName(),
+		ColumnValues: columnValues,
+	}
+
+	return r, r.conn.ExecUpdate(r.Context(), &op)
 }
 
 func (r *ActiveRecord) Delete() (*ActiveRecord, error) {

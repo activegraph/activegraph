@@ -29,6 +29,12 @@ type InsertOperation struct {
 	ConflictTarget string
 }
 
+type UpdateOperation struct {
+	TableName    string
+	PrimaryKey   string
+	ColumnValues []ColumnValue
+}
+
 type DeleteOperation struct {
 	TableName  string
 	PrimaryKey string
@@ -71,6 +77,7 @@ type Conn interface {
 
 	Exec(ctx context.Context, query string, args ...interface{}) error
 	ExecInsert(ctx context.Context, op *InsertOperation) (id interface{}, err error)
+	ExecUpdate(ctx context.Context, op *UpdateOperation) (err error)
 	ExecDelete(ctx context.Context, op *DeleteOperation) (err error)
 	ExecQuery(ctx context.Context, op *QueryOperation, cb func(activesupport.Hash) bool) (err error)
 
@@ -104,6 +111,10 @@ func (c *errConn) Exec(context.Context, string, ...interface{}) error {
 
 func (c *errConn) ExecInsert(context.Context, *InsertOperation) (interface{}, error) {
 	return nil, c.err
+}
+
+func (c *errConn) ExecUpdate(context.Context, *UpdateOperation) error {
+	return c.err
 }
 
 func (c *errConn) ExecDelete(context.Context, *DeleteOperation) error {
