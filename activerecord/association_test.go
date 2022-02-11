@@ -114,3 +114,32 @@ func TestActiveRecord_HasMany_AssignAssociation(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, targets, 1)
 }
+
+func TestActiveRecord_BelongsTo_AssignAssociation(t *testing.T) {
+	EstablishConnection(DatabaseConfig{
+		Adapter: "sqlite3", Database: t.Name(),
+	})
+
+	defer os.Remove(t.Name())
+	defer RemoveConnection("primary")
+
+	Migrate(t.Name(), func(m *M) {
+		m.CreateTable("owners", func(t *Table) { t.String("name") })
+		m.CreateTable("targets", func(t *Table) { t.Int64("value") })
+		m.AddForeignKey("targets", "owners")
+	})
+
+	Owner := New("owner", func(r *R) { r.HasOne("target") })
+	Target := New("target", func(r *R) { r.BelongsTo("owner") })
+
+	// Insert an owner into the database, then create a new unpersisted target.
+	owner := Owner.Create(Hash{"name": "Kaneman"})
+	target := Target.Create(Hash{"value": 42})
+	target.Expect("failed to insert target without owner")
+
+	require.Nil(t, target.Unwrap().Attribute("owner_id"))
+
+	target = target.AssignAssociation("owner", owner)
+	target.Expect("failed to update owner of the target")
+	t.Log(target)
+}

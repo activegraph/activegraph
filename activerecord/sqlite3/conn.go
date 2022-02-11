@@ -110,6 +110,34 @@ func (c *Conn) buildInsertStmt(op *activerecord.InsertOperation) (string, error)
 	return fmt.Sprintf(stmt, op.TableName, colBuf.String(), valBuf.String()), nil
 }
 
+func (c *Conn) buildUpdateStmt(op *activerecord.UpdateOperation) (string, error) {
+	var (
+		stmtBuf strings.Builder
+		pk      interface{}
+	)
+
+	colNum := len(op.ColumnValues)
+	for colPos, col := range op.ColumnValues {
+		val, err := col.Type.Serialize(col.Value)
+		if err != nil {
+			return "", err
+		}
+
+		valfmt := `"%s" = '%v', `
+		if colPos == colNum-1 {
+			valfmt = `"%s" = '%v'`
+		}
+		if col.Name == op.PrimaryKey {
+			pk = val
+		}
+
+		fmt.Fprintf(&stmtBuf, valfmt, col.Name, val)
+	}
+
+	const stmt = `UPDATE "%s" SET %s WHERE "%s" = '%v'`
+	return fmt.Sprintf(stmt, op.TableName, stmtBuf.String(), op.PrimaryKey, pk), nil
+}
+
 func (c *Conn) ExecInsert(ctx context.Context, op *activerecord.InsertOperation) (
 	id interface{}, err error,
 ) {
@@ -143,6 +171,28 @@ func (c *Conn) ExecInsert(ctx context.Context, op *activerecord.InsertOperation)
 	}
 
 	return result.LastInsertId()
+}
+
+func (c *Conn) ExecUpdate(ctx context.Context, op *activerecord.UpdateOperation) error {
+	stmt, err := c.buildUpdateStmt(op)
+	if err != nil {
+		return err
+	}
+	fmt.Println(stmt)
+
+	result, err := c.querier.ExecContext(ctx, stmt)
+	if err != nil {
+		return err
+	}
+
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rows != 1 {
+		return fmt.Errorf("expected single row affected, got %d rows affected", rows)
+	}
+	return nil
 }
 
 func (c *Conn) ExecQuery(

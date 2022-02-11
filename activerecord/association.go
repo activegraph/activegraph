@@ -130,7 +130,12 @@ func (a *BelongsTo) AccessAssociation(owner *ActiveRecord) RecordResult {
 }
 
 func (a *BelongsTo) AssignAssociation(owner *ActiveRecord, target *ActiveRecord) RecordResult {
-	return ErrRecord(fmt.Errorf("not implemented"))
+	err := owner.AssignAttribute(a.AssociationForeignKey(), target.ID())
+	if err != nil {
+		return ErrRecord(err)
+	}
+
+	return ReturnRecord(owner.Update())
 }
 
 func (a *BelongsTo) String() string {
