@@ -15,10 +15,39 @@ const (
 )
 
 type Table struct {
-	name       string
-	primaryKey string
+	name        string
+	primaryKey  string
+	foreignKeys []string
 
 	columns map[string]Type
+}
+
+func (tb *Table) Name() string {
+	return tb.name
+}
+
+func (tb *Table) ForeignKeys() []string {
+	return tb.foreignKeys
+}
+
+func (tb *Table) Columns() (columns []ColumnDefinition) {
+	for columnName, columnType := range tb.columns {
+		columns = append(columns, ColumnDefinition{
+			Name:         columnName,
+			Type:         columnType,
+			IsPrimaryKey: columnName == tb.primaryKey,
+		})
+	}
+
+	if _, ok := tb.columns[tb.primaryKey]; !ok {
+		columns = append(columns, ColumnDefinition{
+			Name:         "id",
+			Type:         new(Int64),
+			IsPrimaryKey: true,
+			NotNull:      true,
+		})
+	}
+	return columns
 }
 
 func (tb *Table) PrimaryKey(primaryKey string) {
@@ -41,6 +70,29 @@ func (tb *Table) DateTime(name string) {
 	tb.DefineColumn(name, new(DateTime))
 }
 
+func (tb *Table) ForeignKey(target string) {
+	tb.foreignKeys = append(tb.foreignKeys, target)
+}
+
+type References struct {
+	ForeignKey bool
+}
+
+func (tb *Table) References(target string, init ...References) {
+	switch len(init) {
+	case 0:
+	case 1:
+		if init[0].ForeignKey {
+			tb.ForeignKey(target)
+		}
+	default:
+		panic(ErrMultipleVariadicArguments{Name: "init"})
+	}
+
+	ref := fmt.Sprintf("%s_id", strings.TrimSuffix(target, "s"))
+	tb.DefineColumn(ref, new(Int64))
+}
+
 type M struct {
 	tables     map[string]Table
 	references map[string]string
@@ -61,7 +113,6 @@ func (m *M) TableExists(tableName string) Result[bool] {
 				return Ok(false)
 			}
 			if err != nil {
-				fmt.Println("??", err)
 				return Err[bool](err)
 			}
 			return Ok(true)
@@ -80,48 +131,13 @@ func (m *M) CreateTable(name string, init func(*Table)) {
 }
 
 func (m *M) AddForeignKey(owner, target string) {
-	m.references[owner] = target
-}
-
-func (m *M) prepareSQL(table *Table) string {
-	var buf strings.Builder
-
-	fmt.Fprintf(&buf, `CREATE TABLE `)
-	fmt.Fprintf(&buf, `%s (`, table.name)
-
-	primaryKey := table.primaryKey
-	if primaryKey == "" {
-		primaryKey = "id"
-		table.Int64(primaryKey)
+	if table, ok := m.tables[owner]; ok {
+		// If it's a new table, add a foreign key directly into the table definition.
+		table.ForeignKey(target)
+		m.tables[owner] = table
+	} else {
+		m.references[owner] = target
 	}
-
-	for columnName, columnType := range table.columns {
-		var sqlType string
-		switch columnType.(type) {
-		case *String:
-			sqlType = "VARCHAR"
-		case *DateTime:
-			sqlType = "DATETIME"
-		case *Int64:
-			sqlType = "INTEGER"
-		}
-
-		if columnName == primaryKey {
-			sqlType += " NOT NULL"
-		}
-
-		fmt.Fprintf(&buf, `%s %s, `, columnName, sqlType)
-	}
-
-	if targetTable, ok := m.references[table.name]; ok {
-		target := strings.TrimSuffix(targetTable, "s")
-
-		// TODO: id is not necessary a primary key.
-		fmt.Fprintf(&buf, `%s_id INTEGER, `, target)
-		fmt.Fprintf(&buf, `FOREIGN KEY ("%s_id") REFERENCES "%s" ("id") `, target, targetTable)
-	}
-	fmt.Fprintf(&buf, `PRIMARY KEY ("%s"))`, primaryKey)
-	return buf.String()
 }
 
 func Migrate(id string, init func(m *M)) {
@@ -149,7 +165,6 @@ func Migrate(id string, init func(m *M)) {
 	)
 
 	// TODO: Use the specified connection name, instead of the default.
-	// conn, err := m.connections.RetrieveConnection(primaryConnectionName)
 	err := m.connections.Transaction(context.TODO(), func() error {
 		if schema.IsErr() {
 			return schema.Err()
@@ -164,7 +179,7 @@ func Migrate(id string, init func(m *M)) {
 		if ok {
 			delete(m.tables, SchemaMigrationsName)
 
-			err := conn.Exec(context.TODO(), m.prepareSQL(&schemaTable))
+			err := conn.CreateTable(context.TODO(), &schemaTable)
 			if err != nil {
 				return err
 			}
@@ -181,10 +196,14 @@ func Migrate(id string, init func(m *M)) {
 		}
 
 		for _, table := range m.tables {
-			sql := m.prepareSQL(&table)
-			fmt.Println(">>>", sql)
+			err = conn.CreateTable(context.TODO(), &table)
+			if err != nil {
+				return err
+			}
+		}
 
-			err = conn.Exec(context.TODO(), sql)
+		for owner := range m.references {
+			err = conn.AddForeignKey(context.TODO(), owner, m.references[owner])
 			if err != nil {
 				return err
 			}

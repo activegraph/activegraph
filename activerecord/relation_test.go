@@ -34,7 +34,7 @@ func initBookTable(t *testing.T, conn activerecord.Conn) {
 			title		VARCHAR,
 
 			PRIMARY KEY(id),
-			FOREIGN KEY(author_id) REFERENCES author(id)
+			FOREIGN KEY(author_id) REFERENCES authors (id)
 		);
 	`)
 	require.NoError(t, err)

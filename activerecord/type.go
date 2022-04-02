@@ -8,12 +8,10 @@ import (
 	"github.com/activegraph/activegraph/activesupport"
 )
 
-func ptr[T any](val T) *T {
-	return &val
-}
-
 type Type interface {
 	fmt.Stringer
+
+	NativeType() string
 
 	Deserialize(value interface{}) (interface{}, error)
 	Serialize(value interface{}) (interface{}, error)
@@ -53,6 +51,8 @@ func (n Nil) Deserialize(value interface{}) (interface{}, error) {
 
 type Int64 struct{}
 
+func (*Int64) NativeType() string { return "INTEGER" }
+
 func (*Int64) String() string { return "int64" }
 
 func (i64 *Int64) Deserialize(value interface{}) (interface{}, error) {
@@ -76,6 +76,8 @@ func (*Int64) Serialize(value interface{}) (interface{}, error) {
 
 type String struct{}
 
+func (*String) NativeType() string { return "VARCHAR" }
+
 func (*String) String() string { return "string" }
 
 func (s *String) Deserialize(value interface{}) (interface{}, error) {
@@ -92,6 +94,8 @@ func (*String) Serialize(value interface{}) (interface{}, error) {
 
 type Float64 struct{}
 
+func (*Float64) NativeType() string { return "FLOAT" }
+
 func (*Float64) String() string { return "float64" }
 func (f64 *Float64) Deserialize(value interface{}) (interface{}, error) {
 	f, ok := value.(float64)
@@ -106,6 +110,8 @@ func (*Float64) Serialize(value interface{}) (interface{}, error) {
 }
 
 type Boolean struct{}
+
+func (b *Boolean) NativeType() string { return "BOOLEAN" }
 
 func (b *Boolean) String() string { return "boolean" }
 
@@ -157,6 +163,8 @@ func formatTime(layout string, value interface{}) (interface{}, error) {
 
 type DateTime struct{}
 
+func (*DateTime) NativeType() string { return "DATETIME" }
+
 func (*DateTime) String() string { return "datetime" }
 
 func (dt *DateTime) Deserialize(value interface{}) (interface{}, error) {
@@ -176,6 +184,8 @@ func (dt *DateTime) Serialize(value interface{}) (interface{}, error) {
 }
 
 type Date struct{}
+
+func (*Date) NativeType() string { return "DATE" }
 
 func (*Date) String() string { return "date" }
 
@@ -197,6 +207,8 @@ func (d *Date) Serialize(value interface{}) (interface{}, error) {
 
 type Time struct{}
 
+func (*Time) NativeType() string { return "TIME" }
+
 func (*Time) String() string { return "time" }
 
 func (t *Time) Deserialize(value interface{}) (interface{}, error) {
@@ -216,6 +228,8 @@ func (t *Time) Serialize(value interface{}) (interface{}, error) {
 }
 
 type JSON struct{}
+
+func (*JSON) NativeType() string { return "VARCHAR" }
 
 func (*JSON) String() string { return "json" }
 
