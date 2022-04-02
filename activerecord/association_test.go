@@ -19,7 +19,7 @@ func TestActiveRecord_HasOne_AssignAssociation(t *testing.T) {
 
 	Migrate(t.Name(), func(m *M) {
 		m.CreateTable("owners", func(t *Table) { t.String("name") })
-		m.CreateTable("targets", func(t *Table) { t.Int64("value") })
+		m.CreateTable("targets", func(t *Table) { t.Int64("value"); t.References("owners") })
 		m.AddForeignKey("targets", "owners")
 	})
 
@@ -69,7 +69,7 @@ func TestActiveRecord_HasMany_AssignAssociation(t *testing.T) {
 
 	Migrate(t.Name(), func(m *M) {
 		m.CreateTable("owners", func(t *Table) { t.String("name") })
-		m.CreateTable("targets", func(t *Table) { t.Int64("value") })
+		m.CreateTable("targets", func(t *Table) { t.Int64("value"); t.References("owners") })
 		m.AddForeignKey("targets", "owners")
 	})
 
@@ -125,7 +125,7 @@ func TestActiveRecord_BelongsTo_AssignAssociation(t *testing.T) {
 
 	Migrate(t.Name(), func(m *M) {
 		m.CreateTable("owners", func(t *Table) { t.String("name") })
-		m.CreateTable("targets", func(t *Table) { t.Int64("value") })
+		m.CreateTable("targets", func(t *Table) { t.Int64("value"); t.References("owners") })
 		m.AddForeignKey("targets", "owners")
 	})
 

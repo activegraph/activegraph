@@ -66,11 +66,7 @@ type ColumnDefinition struct {
 	IsPrimaryKey bool
 }
 
-type TableInfo interface {
-	Name() string
-}
-
-type Conn interface {
+type DatabaseStatements interface {
 	BeginTransaction(ctx context.Context) (Conn, error)
 	CommitTransaction(ctx context.Context) error
 	RollbackTransaction(ctx context.Context) error
@@ -80,11 +76,19 @@ type Conn interface {
 	ExecUpdate(ctx context.Context, op *UpdateOperation) (err error)
 	ExecDelete(ctx context.Context, op *DeleteOperation) (err error)
 	ExecQuery(ctx context.Context, op *QueryOperation, cb func(activesupport.Hash) bool) (err error)
+}
 
-	// Stat(tableName string) (TableInfo, error)
+type SchemaStatements interface {
+	CreateTable(ctx context.Context, table *Table) error
+	AddForeignKey(ctx context.Context, owner, target string) error
 
+	ColumnType(typeName string) (Type, error)
 	ColumnDefinitions(ctx context.Context, tableName string) ([]ColumnDefinition, error)
-	LookupType(typeName string) (Type, error)
+}
+
+type Conn interface {
+	DatabaseStatements
+	SchemaStatements
 
 	Close() error
 }
@@ -125,16 +129,20 @@ func (c *errConn) ExecQuery(context.Context, *QueryOperation, func(activesupport
 	return c.err
 }
 
-func (c *errConn) LookupType(typeName string) (Type, error) {
-	return nil, c.err
-}
-
-func (c *errConn) Stat(tableName string) (TableInfo, error) {
+func (c *errConn) ColumnType(typeName string) (Type, error) {
 	return nil, c.err
 }
 
 func (c *errConn) ColumnDefinitions(ctx context.Context, tableName string) ([]ColumnDefinition, error) {
 	return nil, c.err
+}
+
+func (c *errConn) CreateTable(ctx context.Context, table *Table) error {
+	return c.err
+}
+
+func (c *errConn) AddForeignKey(ctx context.Context, owner, target string) error {
+	return c.err
 }
 
 func (c *errConn) Close() error {

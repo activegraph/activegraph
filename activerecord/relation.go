@@ -274,7 +274,7 @@ func (rel *Relation) Connection() Conn {
 
 	conn, err := rel.connections.RetrieveConnection(primaryConnectionName)
 	if err != nil {
-		return &errConn{err}
+		return &errConn{err: err}
 	}
 	return conn
 }

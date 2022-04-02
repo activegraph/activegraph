@@ -9,6 +9,7 @@ import (
 	"github.com/mattn/go-sqlite3"
 
 	"github.com/activegraph/activegraph/activerecord"
+	"github.com/activegraph/activegraph/activerecord/ansi"
 	"github.com/activegraph/activegraph/activesupport"
 )
 
@@ -24,6 +25,8 @@ type Querier interface {
 type Conn struct {
 	querier Querier
 
+	ansi.SchemaStatements
+
 	db *sql.DB
 	tx *sql.Tx
 }
@@ -33,7 +36,19 @@ func Connect(conf activerecord.DatabaseConfig) (activerecord.Conn, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Conn{db: db, querier: db}, nil
+	conn := &Conn{
+		db:      db,
+		querier: db,
+	}
+
+	// Enable foreign keys support.
+	err = conn.Exec(context.Background(), "PRAGMA foreign_keys = ON")
+	if err != nil {
+		return nil, err
+	}
+
+	conn.SchemaStatements = ansi.SchemaStatements{conn}
+	return conn, nil
 }
 
 func (c *Conn) Close() error {
@@ -50,7 +65,11 @@ func (c *Conn) BeginTransaction(ctx context.Context) (activerecord.Conn, error) 
 	}
 
 	fmt.Println("BEGIN TRANSACTION")
-	return &Conn{db: c.db, querier: tx, tx: tx}, nil
+
+	conn := &Conn{db: c.db, querier: tx, tx: tx}
+	conn.SchemaStatements = ansi.SchemaStatements{conn}
+
+	return conn, nil
 }
 
 func (c *Conn) CommitTransaction(ctx context.Context) error {
@@ -70,6 +89,7 @@ func (c *Conn) RollbackTransaction(ctx context.Context) error {
 }
 
 func (c *Conn) Exec(ctx context.Context, sql string, args ...interface{}) error {
+	fmt.Println(">>>", sql, args)
 	_, err := c.querier.ExecContext(ctx, sql, args...)
 	return err
 }
@@ -236,27 +256,6 @@ func (c *Conn) ExecQuery(
 	return nil
 }
 
-func (c *Conn) LookupType(typeName string) (activerecord.Type, error) {
-	switch strings.ToLower(typeName) {
-	case "integer":
-		return new(activerecord.Int64), nil
-	case "varchar", "text":
-		return new(activerecord.String), nil
-	case "float":
-		return new(activerecord.Float64), nil
-	case "boolean":
-		return new(activerecord.Boolean), nil
-	case "datetime":
-		return new(activerecord.DateTime), nil
-	case "date":
-		return new(activerecord.Date), nil
-	case "time":
-		return new(activerecord.Time), nil
-	default:
-		return nil, activerecord.ErrUnsupportedType{TypeName: typeName}
-	}
-}
-
 func (c *Conn) ColumnDefinitions(ctx context.Context, tableName string) (
 	[]activerecord.ColumnDefinition, error,
 ) {
@@ -281,7 +280,7 @@ func (c *Conn) ColumnDefinitions(ctx context.Context, tableName string) (
 			return nil, err
 		}
 
-		columnType, err := c.LookupType(ftype)
+		columnType, err := c.ColumnType(ftype)
 		if err != nil {
 			return nil, err
 		}
@@ -297,4 +296,62 @@ func (c *Conn) ColumnDefinitions(ctx context.Context, tableName string) (
 		return nil, activerecord.ErrTableNotExist{TableName: tableName}
 	}
 	return definitions, nil
+}
+
+func (c *Conn) AddForeignKey(ctx context.Context, owner, target string) error {
+	// SQLite does not support adding a foreign key constraint, which
+	// is implemented in ANSI schema statements, therefore we need to
+	// drop table and create a new one with foreign keys inside.
+	stmts := []string{
+		`PRAGMA foreign_keys = OFF`,
+		fmt.Sprintf(`ALTER TABLE %q RENAME TO "temp_%s"`, owner, owner),
+	}
+
+	columns, err := c.ColumnDefinitions(ctx, owner)
+	if err != nil {
+		return err
+	}
+
+	for _, stmt := range stmts {
+		if err := c.Exec(ctx, stmt); err != nil {
+			return err
+		}
+	}
+
+	var buf strings.Builder
+	fmt.Fprintf(&buf, `CREATE TABLE %q (`, owner)
+
+	var primaryKey string
+
+	for _, column := range columns {
+		nativeType := column.Type.NativeType()
+		if column.NotNull {
+			nativeType += " NOT NULL"
+		}
+		if column.IsPrimaryKey {
+			primaryKey = column.Name
+		}
+		fmt.Fprintf(&buf, `%s %s, `, column.Name, nativeType)
+	}
+
+	// TODO: Add all foreign keys as well.
+	fk := fmt.Sprintf("%s_id", strings.TrimSuffix(target, "s"))
+
+	fmt.Fprintf(&buf, `FOREIGN KEY (%q) REFERENCES "%s" ("id"), `, fk, target)
+	fmt.Fprintf(&buf, `PRIMARY KEY (%q))`, primaryKey)
+
+	stmts = []string{
+		buf.String(), // CREATE TABLE ...
+		fmt.Sprintf(`INSERT INTO %q SELECT * FROM "temp_%s"`, owner, owner),
+		fmt.Sprintf(`DROP TABLE "temp_%s"`, owner),
+		fmt.Sprintf(`PRAGMA foreign_keys = ON`),
+	}
+
+	for _, stmt := range stmts {
+		if err := c.Exec(ctx, stmt); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }

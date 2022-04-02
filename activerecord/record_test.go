@@ -13,50 +13,40 @@ import (
 )
 
 func TestActiveRecord_Insert(t *testing.T) {
-	conn, err := activerecord.EstablishConnection(activerecord.DatabaseConfig{
+	_, err := activerecord.EstablishConnection(activerecord.DatabaseConfig{
 		Adapter:  "sqlite3",
-		Database: ":memory:",
+		Database: t.Name(),
 	})
 	require.NoError(t, err)
 
+	defer os.Remove(t.Name())
 	defer activerecord.RemoveConnection("primary")
 
-	err = conn.Exec(
-		context.TODO(), `
-		CREATE TABLE authors (
-			id		INTEGER NOT NULL,
-			name	VARCHAR,
+	activerecord.Migrate(t.Name(), func(m *activerecord.M) {
+		m.CreateTable("authors", func(t *activerecord.Table) {
+			t.String("name")
+		})
+		m.CreateTable("books", func(t *activerecord.Table) {
+			t.Int64("year")
+			t.Int64("published_id")
+			t.String("title")
 
-			PRIMARY KEY(id)
-		);
-		CREATE TABLE books (
-			uid  		 INTEGER NOT NULL,
-			author_id	 INTEGER,
-			publisher_id INTEGER,
-			year		 INTEGER,
-			title		 VARCHAR,
+			t.References("authors")
+		})
+		m.CreateTable("publishers", func(t *activerecord.Table) {
+			t.Int64("book_id")
+			t.References("books")
+		})
 
-			PRIMARY KEY(uid),
-			FOREIGN KEY(author_id) REFERENCES author(id)
-		);
-		CREATE TABLE publishers (
-			id      INTEGER NOT NULL,
-			book_id INTEGER,
-			
-			PRIMARY KEY(id),
-			FOREIGN KEY(book_id) REFERENCES book(id)
-		);
-		`,
-	)
-	require.NoError(t, err)
+		m.AddForeignKey("books", "authors")
+		m.AddForeignKey("publishers", "books")
+	})
 
 	Author := activerecord.New("author", func(r *activerecord.R) {
 		r.HasMany("books")
 	})
 
 	Book := activerecord.New("book", func(r *activerecord.R) {
-		r.PrimaryKey("uid")
-
 		r.BelongsTo("author", func(assoc *activerecord.BelongsTo) {
 			assoc.ForeignKey("author_id")
 		})
