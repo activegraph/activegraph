@@ -24,7 +24,7 @@ func TestMigrate_AddForeignKey(t *testing.T) {
 		})
 		m.CreateTable("targets", func(t *Table) {
 			t.Int64("value")
-			t.References("owners")
+			t.References("owners") // Add owner_id column
 		})
 	})
 

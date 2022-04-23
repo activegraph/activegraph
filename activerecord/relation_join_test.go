@@ -1,7 +1,6 @@
 package activerecord_test
 
 import (
-	"context"
 	"os"
 	"testing"
 
@@ -14,7 +13,7 @@ import (
 )
 
 func TestRelation_JoinsOK(t *testing.T) {
-	conn, err := activerecord.EstablishConnection(activerecord.DatabaseConfig{
+	_, err := activerecord.EstablishConnection(activerecord.DatabaseConfig{
 		Adapter:  "sqlite3",
 		Database: t.Name() + ".db",
 	})
@@ -23,34 +22,22 @@ func TestRelation_JoinsOK(t *testing.T) {
 	defer os.Remove(t.Name() + ".db")
 	defer activerecord.RemoveConnection("primary")
 
-	err = conn.Exec(
-		context.TODO(), `
-		CREATE TABLE authors (
-			id		INTEGER NOT NULL,
-			name	VARCHAR,
-
-			PRIMARY KEY(id)
-		);
-		CREATE TABLE books (
-			id  		 INTEGER NOT NULL,
-			author_id	 INTEGER,
-			publisher_id INTEGER,
-			title		 VARCHAR,
-
-			PRIMARY KEY(id),
-			FOREIGN KEY(author_id) REFERENCES author(id)
-		);
-		CREATE TABLE publishers (
-			id      INTEGER NOT NULL,
-			book_id INTEGER,
-			name	VARCHAR,
-			
-			PRIMARY KEY(id),
-			FOREIGN KEY(book_id) REFERENCES book(id)
-		);
-		`,
-	)
-	require.NoError(t, err)
+	activerecord.Migrate(t.Name(), func(m *activerecord.M) {
+		m.CreateTable("authors", func(t *activerecord.Table) {
+			t.String("name")
+		})
+		m.CreateTable("books", func(t *activerecord.Table) {
+			t.String("title")
+			t.References("authors")
+			t.ForeignKey("authors")
+			t.References("publishers")
+		})
+		m.CreateTable("publishers", func(t *activerecord.Table) {
+			t.String("name")
+			t.References("books")
+			t.ForeignKey("books")
+		})
+	})
 
 	Author := activerecord.New("author", func(r *activerecord.R) {
 		r.HasMany("book")
