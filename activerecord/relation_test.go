@@ -13,43 +13,30 @@ import (
 )
 
 func initAuthorTable(t *testing.T, conn activerecord.Conn) {
-	err := conn.Exec(context.TODO(), `
-		CREATE TABLE authors (
-			id		INTEGER NOT NULL,
-			name 	VARCHAR,
-
-			PRIMARY KEY(id)
-		);
-	`)
-
-	require.NoError(t, err)
+	activerecord.Migrate(t.Name()+"_add_authors_table", func(m *activerecord.M) {
+		m.CreateTable("authors", func(t *activerecord.Table) {
+			t.String("name")
+		})
+	})
 }
 
 func initBookTable(t *testing.T, conn activerecord.Conn) {
-	err := conn.Exec(context.TODO(), `
-		CREATE TABLE books (
-			id 			INTEGER NOT NULL,
-			author_id	INTEGER,
-			year		INTEGER,
-			title		VARCHAR,
-
-			PRIMARY KEY(id),
-			FOREIGN KEY(author_id) REFERENCES authors (id)
-		);
-	`)
-	require.NoError(t, err)
+	activerecord.Migrate(t.Name()+"_add_books_table", func(m *activerecord.M) {
+		m.CreateTable("books", func(t *activerecord.Table) {
+			t.Int64("year")
+			t.String("title")
+			t.References("authors")
+			t.ForeignKey("authors")
+		})
+	})
 }
 
 func initProductTable(t *testing.T, conn activerecord.Conn) {
-	err := conn.Exec(context.TODO(), `
-		CREATE TABLE products (
-			id 			INTEGER NOT NULL,
-			name		VARCHAR,
-
-			PRIMARY KEY(id)
-		);
-	`)
-	require.NoError(t, err)
+	activerecord.Migrate(t.Name()+"_add_products_table", func(m *activerecord.M) {
+		m.CreateTable("products", func(t *activerecord.Table) {
+			t.String("name")
+		})
+	})
 }
 
 func TestRelation_New(t *testing.T) {

@@ -6,26 +6,19 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/mattn/go-sqlite3"
-
 	"github.com/activegraph/activegraph/activerecord"
 	"github.com/activegraph/activegraph/activerecord/ansi"
-	"github.com/activegraph/activegraph/activesupport"
+	"github.com/mattn/go-sqlite3"
 )
 
 func init() {
 	activerecord.RegisterConnectionAdapter("sqlite3", Connect)
 }
 
-type Querier interface {
-	ExecContext(context.Context, string, ...interface{}) (sql.Result, error)
-	QueryContext(context.Context, string, ...interface{}) (*sql.Rows, error)
-}
-
 type Conn struct {
-	querier Querier
-
+	ansi.ConnectionStatements
 	ansi.SchemaStatements
+	ansi.DatabaseStatements
 
 	db *sql.DB
 	tx *sql.Tx
@@ -37,17 +30,17 @@ func Connect(conf activerecord.DatabaseConfig) (activerecord.Conn, error) {
 		return nil, err
 	}
 	conn := &Conn{
-		db:      db,
-		querier: db,
+		db:                   db,
+		ConnectionStatements: db,
+		SchemaStatements:     ansi.SchemaStatements{db},
+		DatabaseStatements:   ansi.DatabaseStatements{db},
 	}
 
 	// Enable foreign keys support.
-	err = conn.Exec(context.Background(), "PRAGMA foreign_keys = ON")
+	_, err = db.ExecContext(context.Background(), "PRAGMA foreign_keys = ON")
 	if err != nil {
 		return nil, err
 	}
-
-	conn.SchemaStatements = ansi.SchemaStatements{conn}
 	return conn, nil
 }
 
@@ -66,10 +59,13 @@ func (c *Conn) BeginTransaction(ctx context.Context) (activerecord.Conn, error) 
 
 	fmt.Println("BEGIN TRANSACTION")
 
-	conn := &Conn{db: c.db, querier: tx, tx: tx}
-	conn.SchemaStatements = ansi.SchemaStatements{conn}
-
-	return conn, nil
+	return &Conn{
+		db:                   c.db,
+		tx:                   tx,
+		ConnectionStatements: tx,
+		SchemaStatements:     ansi.SchemaStatements{tx},
+		DatabaseStatements:   ansi.DatabaseStatements{tx},
+	}, nil
 }
 
 func (c *Conn) CommitTransaction(ctx context.Context) error {
@@ -88,86 +84,10 @@ func (c *Conn) RollbackTransaction(ctx context.Context) error {
 	return c.tx.Rollback()
 }
 
-func (c *Conn) Exec(ctx context.Context, sql string, args ...interface{}) error {
-	fmt.Println(">>>", sql, args)
-	_, err := c.querier.ExecContext(ctx, sql, args...)
-	return err
-}
-
-func (c *Conn) ExecDelete(ctx context.Context, op *activerecord.DeleteOperation) error {
-	const stmt = `DELETE FROM "%s" WHERE "%s" = '%v'`
-	sql := fmt.Sprintf(stmt, op.TableName, op.PrimaryKey, op.Value)
-
-	fmt.Println(sql)
-	_, err := c.querier.ExecContext(ctx, sql)
-	return err
-}
-
-func (c *Conn) buildInsertStmt(op *activerecord.InsertOperation) (string, error) {
-	var (
-		colBuf strings.Builder
-		valBuf strings.Builder
-	)
-
-	colPos, colNum := 0, len(op.ColumnValues)
-	for _, col := range op.ColumnValues {
-		val, err := col.Type.Serialize(col.Value)
-		if err != nil {
-			return "", err
-		}
-
-		colfmt, valfmt := `"%s", `, `'%v', `
-		if colPos == colNum-1 {
-			colfmt, valfmt = `"%s"`, `'%v'`
-		}
-
-		fmt.Fprintf(&colBuf, colfmt, col.Name)
-		fmt.Fprintf(&valBuf, valfmt, val)
-		colPos++
-	}
-
-	const stmt = `INSERT INTO "%s" (%s) VALUES (%s)`
-	return fmt.Sprintf(stmt, op.TableName, colBuf.String(), valBuf.String()), nil
-}
-
-func (c *Conn) buildUpdateStmt(op *activerecord.UpdateOperation) (string, error) {
-	var (
-		stmtBuf strings.Builder
-		pk      interface{}
-	)
-
-	colNum := len(op.ColumnValues)
-	for colPos, col := range op.ColumnValues {
-		val, err := col.Type.Serialize(col.Value)
-		if err != nil {
-			return "", err
-		}
-
-		valfmt := `"%s" = '%v', `
-		if colPos == colNum-1 {
-			valfmt = `"%s" = '%v'`
-		}
-		if col.Name == op.PrimaryKey {
-			pk = val
-		}
-
-		fmt.Fprintf(&stmtBuf, valfmt, col.Name, val)
-	}
-
-	const stmt = `UPDATE "%s" SET %s WHERE "%s" = '%v'`
-	return fmt.Sprintf(stmt, op.TableName, stmtBuf.String(), op.PrimaryKey, pk), nil
-}
-
 func (c *Conn) ExecInsert(ctx context.Context, op *activerecord.InsertOperation) (
 	id interface{}, err error,
 ) {
-	stmt, err := c.buildInsertStmt(op)
-	if err != nil {
-		return 0, err
-	}
-	fmt.Println(stmt)
-
-	result, err := c.querier.ExecContext(ctx, stmt)
+	id, err = c.DatabaseStatements.ExecInsert(ctx, op)
 	if err != nil {
 		switch err := err.(type) {
 		case sqlite3.Error:
@@ -182,85 +102,14 @@ func (c *Conn) ExecInsert(ctx context.Context, op *activerecord.InsertOperation)
 		}
 	}
 
-	rows, err := result.RowsAffected()
-	if err != nil {
-		return 0, err
-	}
-	if rows != 1 {
-		return 0, fmt.Errorf("expected single row affected, got %d rows affected", rows)
-	}
-
-	return result.LastInsertId()
-}
-
-func (c *Conn) ExecUpdate(ctx context.Context, op *activerecord.UpdateOperation) error {
-	stmt, err := c.buildUpdateStmt(op)
-	if err != nil {
-		return err
-	}
-	fmt.Println(stmt)
-
-	result, err := c.querier.ExecContext(ctx, stmt)
-	if err != nil {
-		return err
-	}
-
-	rows, err := result.RowsAffected()
-	if err != nil {
-		return err
-	}
-	if rows != 1 {
-		return fmt.Errorf("expected single row affected, got %d rows affected", rows)
-	}
-	return nil
-}
-
-func (c *Conn) ExecQuery(
-	ctx context.Context, op *activerecord.QueryOperation, cb func(activesupport.Hash) bool,
-) (
-	err error,
-) {
-	fmt.Println(op.Text, op.Args)
-	rws, err := c.querier.QueryContext(ctx, op.Text, op.Args...)
-	if err != nil {
-		return err
-	}
-
-	defer rws.Close()
-
-	for rws.Next() {
-		var (
-			// Iterate over rows and scan one-by one.
-			row = make(activesupport.Hash)
-			// Initalize a list of interfaces, so the Scan operation could
-			// assign the results to the each element of the list.
-			vals = make([]interface{}, len(op.Columns))
-		)
-
-		for i := range vals {
-			vals[i] = new(interface{})
-		}
-		if err = rws.Scan(vals...); err != nil {
-			return err
-		}
-		for i := range vals {
-			row[op.Columns[i]] = *(vals[i]).(*interface{})
-		}
-
-		// Terminate the querying and close the reading cursor.
-		if !cb(row) {
-			break
-		}
-	}
-
-	return nil
+	return id, err
 }
 
 func (c *Conn) ColumnDefinitions(ctx context.Context, tableName string) (
 	[]activerecord.ColumnDefinition, error,
 ) {
 	stmt := fmt.Sprintf("PRAGMA table_info('%s')", tableName)
-	rws, err := c.querier.QueryContext(ctx, stmt)
+	rws, err := c.ConnectionStatements.QueryContext(ctx, stmt)
 	if err != nil {
 		return nil, err
 	}
@@ -313,7 +162,7 @@ func (c *Conn) AddForeignKey(ctx context.Context, owner, target string) error {
 	}
 
 	for _, stmt := range stmts {
-		if err := c.Exec(ctx, stmt); err != nil {
+		if _, err := c.ExecContext(ctx, stmt); err != nil {
 			return err
 		}
 	}
@@ -348,7 +197,7 @@ func (c *Conn) AddForeignKey(ctx context.Context, owner, target string) error {
 	}
 
 	for _, stmt := range stmts {
-		if err := c.Exec(ctx, stmt); err != nil {
+		if _, err := c.ExecContext(ctx, stmt); err != nil {
 			return err
 		}
 	}

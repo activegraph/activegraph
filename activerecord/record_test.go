@@ -1,7 +1,6 @@
 package activerecord_test
 
 import (
-	"context"
 	"os"
 	"testing"
 
@@ -115,7 +114,7 @@ func TestActiveRecord_Insert(t *testing.T) {
 }
 
 func TestActiveRecord_HasOne_AccessAssociation(t *testing.T) {
-	conn, err := activerecord.EstablishConnection(activerecord.DatabaseConfig{
+	_, err := activerecord.EstablishConnection(activerecord.DatabaseConfig{
 		Adapter:  "sqlite3",
 		Database: t.Name() + ".db",
 	})
@@ -124,25 +123,16 @@ func TestActiveRecord_HasOne_AccessAssociation(t *testing.T) {
 	defer os.Remove(t.Name() + ".db")
 	defer activerecord.RemoveConnection("primary")
 
-	err = conn.Exec(
-		context.TODO(), `
-		CREATE TABLE suppliers (
-			id  		 INTEGER NOT NULL,
-			name		 VARCHAR,
+	activerecord.Migrate(t.Name(), func(m *activerecord.M) {
+		m.CreateTable("suppliers", func(t *activerecord.Table) {
+			t.String("name")
+		})
 
-			PRIMARY KEY(id)
-		);
-		CREATE TABLE accounts (
-			id      	INTEGER NOT NULL,
-			supplier_id INTEGER,
-			number		INTEGER,
-
-			PRIMARY KEY(id),
-			FOREIGN KEY(supplier_id) REFERENCES suppliers(id)
-		);
-		`,
-	)
-	require.NoError(t, err)
+		m.CreateTable("accounts", func(t *activerecord.Table) {
+			t.Int64("number")
+			t.References("suppliers") // Add "supplier_id" as fk
+		})
+	})
 
 	Supplier := activerecord.New("supplier", func(r *activerecord.R) {
 		r.HasOne("account")

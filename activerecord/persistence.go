@@ -66,12 +66,13 @@ type ColumnDefinition struct {
 	IsPrimaryKey bool
 }
 
-type DatabaseStatements interface {
+type TransactionStatements interface {
 	BeginTransaction(ctx context.Context) (Conn, error)
 	CommitTransaction(ctx context.Context) error
 	RollbackTransaction(ctx context.Context) error
+}
 
-	Exec(ctx context.Context, query string, args ...interface{}) error
+type DatabaseStatements interface {
 	ExecInsert(ctx context.Context, op *InsertOperation) (id interface{}, err error)
 	ExecUpdate(ctx context.Context, op *UpdateOperation) (err error)
 	ExecDelete(ctx context.Context, op *DeleteOperation) (err error)
@@ -87,6 +88,7 @@ type SchemaStatements interface {
 }
 
 type Conn interface {
+	TransactionStatements
 	DatabaseStatements
 	SchemaStatements
 
@@ -97,6 +99,7 @@ type errConn struct {
 	err error
 }
 
+// TransactionStatements
 func (c *errConn) BeginTransaction(ctx context.Context) (Conn, error) {
 	return nil, c.err
 }
@@ -109,10 +112,7 @@ func (c *errConn) RollbackTransaction(ctx context.Context) error {
 	return c.err
 }
 
-func (c *errConn) Exec(context.Context, string, ...interface{}) error {
-	return c.err
-}
-
+// DatabaseStatements
 func (c *errConn) ExecInsert(context.Context, *InsertOperation) (interface{}, error) {
 	return nil, c.err
 }
@@ -129,6 +129,7 @@ func (c *errConn) ExecQuery(context.Context, *QueryOperation, func(activesupport
 	return c.err
 }
 
+// SchemaStatements
 func (c *errConn) ColumnType(typeName string) (Type, error) {
 	return nil, c.err
 }
