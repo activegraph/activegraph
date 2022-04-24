@@ -20,6 +20,38 @@ Implementation of the ActiveGraph, comparing to other Go frameworks does not req
 GraphQL schema declaration. Instead, it is highly anticipated to work with
 business models of the service as API entities for GraphQL server.
 
+### Active Records
+Consider the following example that creates two tables:
+```go
+activerecord.EstablishConnection(
+    activerecord.DatabaseConfig{Adapter: "sqlite3", Database: "main.db",
+}
+
+activerecord.Migrate("001_create_tables", func(m *activerecord.M) {
+    m.CreateTable("authors", func(t *activerecord.Table) {
+        t.String("name")
+        t.DateTime("born_at")
+    })
+
+    m.CreateTable("books", func(t *activerecord.Table) {
+        t.Int64("publisher_id")
+        t.Int64("year")
+        t.String("title")
+        t.References("authors")
+        t.ForeignKey("authors")
+    })
+})
+
+// Declare records that reference created tables.
+Book := activerecord.New("book", func(r *activerecord.R) {
+    r.BelongsTo("author")
+})
+
+Author := activerecord.New("author", func(r *activerecord.R) {
+    r.HasMany("books")
+})
+```
+
 ## License
 
 ActiveGraph is [MIT licensed](LICENSE).
