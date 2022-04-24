@@ -24,8 +24,8 @@ business models of the service as API entities for GraphQL server.
 Consider the following example that creates two tables:
 ```go
 activerecord.EstablishConnection(
-    activerecord.DatabaseConfig{Adapter: "sqlite3", Database: "main.db",
-}
+    activerecord.DatabaseConfig{Adapter: "sqlite3", Database: "main.db"},
+)
 
 activerecord.Migrate("001_create_tables", func(m *activerecord.M) {
     m.CreateTable("authors", func(t *activerecord.Table) {
