@@ -83,7 +83,7 @@ AuthorControler := actioncontroller.New(func(c *actioncontroller.C) {
 ### Application
 
 You can create a new application using `activegraph` package as following:
-```py
+```go
 app := activegraph.New(func(a *activegraph.A) {
     a.Resources(Author, AuthorController)
 })
