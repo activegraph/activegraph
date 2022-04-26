@@ -80,6 +80,19 @@ AuthorControler := actioncontroller.New(func(c *actioncontroller.C) {
 })
 ```
 
+### Application
+
+You can create a new application using `activegraph` package as following:
+```py
+app := activegraph.New(func(a *activegraph.A) {
+    a.Resources(Author, AuthorController)
+})
+
+app.ListenAndServe() // Listens on localhost:3000 by default
+
+// Use http://localhost:3000/graphql to access GrahiQL console.
+```
+
 ## License
 
 ActiveGraph is [MIT licensed](LICENSE).
